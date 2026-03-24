@@ -3,7 +3,7 @@ import re
 import math
 
 CONFIG_DIR = "lua-remote-hub/ha-addon/config"
-OUTPUT_FILE = "IR-Trigger.yaml"
+OUTPUT_FILE = "config_example/IR-Trigger.yaml"
 
 def parse_signal(signal_str):
     parts = signal_str.strip().split(':')

@@ -1,18 +1,18 @@
 # IR-Trigger.yaml - Generated from lua-remote-hub
 
-"NEC_807F02FD":
+"AEHA_807F02FD03":
   controller: "HDMI-Switcher"
   button: "NUM_1"
 
-"NEC_807F04FB":
+"AEHA_807F04FB03":
   controller: "HDMI-Switcher"
   button: "NUM_2"
 
-"NEC_807F06F9":
+"AEHA_807F06F903":
   controller: "HDMI-Switcher"
   button: "NUM_3"
 
-"NEC_807F08F7":
+"AEHA_807F08F703":
   controller: "HDMI-Switcher"
   button: "NEXT"
 
@@ -383,78 +383,6 @@
 "NEC_56A97B84":
   controller: "C-RT1"
   button: "D_12"
-
-"NEC_807F01FE":
-  controller: "LED-RGB"
-  button: "BUTTON_4"
-
-"NEC_807F02FD":
-  controller: "LED-RGB"
-  button: "BUTTON_5"
-
-"NEC_807F03FC":
-  controller: "LED-RGB"
-  button: "BUTTON_6"
-
-"NEC_807F04FB":
-  controller: "LED-RGB"
-  button: "BUTTON_7"
-
-"NEC_807F05FA":
-  controller: "LED-RGB"
-  button: "BUTTON_8"
-
-"NEC_807F06F9":
-  controller: "LED-RGB"
-  button: "BUTTON_9"
-
-"NEC_807F07F8":
-  controller: "LED-RGB"
-  button: "BUTTON_10"
-
-"NEC_807F08F7":
-  controller: "LED-RGB"
-  button: "BUTTON_11"
-
-"NEC_807F09F6":
-  controller: "LED-RGB"
-  button: "BUTTON_12"
-
-"NEC_807F0AF5":
-  controller: "LED-RGB"
-  button: "BUTTON_13"
-
-"NEC_807F0CF3":
-  controller: "LED-RGB"
-  button: "BUTTON_16"
-
-"NEC_807F0DF2":
-  controller: "LED-RGB"
-  button: "BUTTON_17"
-
-"NEC_807F0EF1":
-  controller: "LED-RGB"
-  button: "BUTTON_18"
-
-"NEC_807F12ED":
-  controller: "LED-RGB"
-  button: "BUTTON_1"
-
-"NEC_807F1AE5":
-  controller: "LED-RGB"
-  button: "BUTTON_2"
-
-"NEC_807F1BE4":
-  controller: "LED-RGB"
-  button: "BUTTON_14"
-
-"NEC_807F1EE1":
-  controller: "LED-RGB"
-  button: "BUTTON_3"
-
-"NEC_807F1FE0":
-  controller: "LED-RGB"
-  button: "BUTTON_15"
 
 "NEC_80EA01FE":
   controller: "J-MX100RC"
