@@ -38,9 +38,9 @@ def parse_signal(signal_str):
         
     return f"{prefix}{hex_payload}"
 
-result_dict = {}
+result_list = []
 
-for filename in os.listdir(CONFIG_DIR):
+for filename in sorted(os.listdir(CONFIG_DIR)):
     if not filename.endswith(".lua"):
         continue
         
@@ -70,17 +70,17 @@ for filename in os.listdir(CONFIG_DIR):
         
         normalized_signal = parse_signal(raw_signal)
         if normalized_signal:
-            result_dict[normalized_signal] = {
+            result_list.append({
+                "signal": normalized_signal,
                 "controller": controller_name,
                 "button": button_name
-            }
+            })
 
 with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
     f.write("# IR-Trigger.yaml - Generated from lua-remote-hub\n\n")
-    for signal in sorted(result_dict.keys()):
-        data = result_dict[signal]
-        f.write(f'"{signal}":\n')
-        f.write(f'  controller: "{data["controller"]}"\n')
-        f.write(f'  button: "{data["button"]}"\n\n')
+    for item in result_list:
+        f.write(f'"{item["signal"]}":\n')
+        f.write(f'  controller: "{item["controller"]}"\n')
+        f.write(f'  button: "{item["button"]}"\n\n')
 
-print(f"Generated {OUTPUT_FILE} with {len(result_dict)} IR signals.")
+print(f"Generated {OUTPUT_FILE} with {len(result_list)} IR signals in original Lua order.")
