@@ -1,21 +1,5 @@
 # IR-Trigger.yaml - Generated from lua-remote-hub
 
-"AEHA_807F02FD":
-  controller: "HDMI-Switcher"
-  button: "NUM_1"
-
-"AEHA_807F04FB":
-  controller: "HDMI-Switcher"
-  button: "NUM_2"
-
-"AEHA_807F06F9":
-  controller: "HDMI-Switcher"
-  button: "NUM_3"
-
-"AEHA_807F08F7":
-  controller: "HDMI-Switcher"
-  button: "NEXT"
-
 "NEC_50AF04FB":
   controller: "C-RT1"
   button: "A_8"
@@ -791,4 +775,20 @@
 "NEC_86FFAD52":
   controller: "RC-R2"
   button: "SUBTITLE"
+
+"RAW_807F02FD":
+  controller: "HDMI-Switcher"
+  button: "NUM_1"
+
+"RAW_807F04FB":
+  controller: "HDMI-Switcher"
+  button: "NUM_2"
+
+"RAW_807F06F9":
+  controller: "HDMI-Switcher"
+  button: "NUM_3"
+
+"RAW_807F08F7":
+  controller: "HDMI-Switcher"
+  button: "NEXT"
 
