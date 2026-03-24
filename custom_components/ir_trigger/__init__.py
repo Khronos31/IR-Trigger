@@ -147,10 +147,20 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     hass.bus.async_listen(EVENT_IR_RECEIVED, handle_ir_event)
 
-    # Setup platforms (sensor)
-    # We use async_create_task to setup the platform
-    hass.async_create_task(
-        discovery.async_load_platform(hass, "sensor", DOMAIN, {"setup": True}, config)
-    )
+    if DOMAIN in config:
+        hass.async_create_task(
+            hass.config_entries.flow.async_init(
+                DOMAIN, context={"source": "import"}, data={}
+            )
+        )
 
     return True
+
+async def async_setup_entry(hass, entry):
+    """Set up IR-Trigger from a config entry."""
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    return True
+
+async def async_unload_entry(hass, entry):
+    """Unload a config entry."""
+    return await hass.config_entries.async_unload_platforms(entry, ["sensor"])

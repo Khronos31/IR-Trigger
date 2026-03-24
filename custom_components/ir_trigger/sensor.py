@@ -15,11 +15,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_platform(hass: HomeAssistant, config: ConfigType, async_add_entities, discovery_info=None):
-    """Set up the IR-Trigger sensor platform."""
-    if discovery_info is None:
-        return
-
+async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
+    """Set up the IR-Trigger sensor platform from a config entry."""
     _LOGGER.info("IR-Trigger sensor platform initialized")
     ir_data = hass.data[DOMAIN]
     

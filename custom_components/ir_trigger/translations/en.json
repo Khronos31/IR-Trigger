@@ -1,0 +1,14 @@
+{
+    "title": "IR-Trigger",
+    "config": {
+        "step": {
+            "user": {
+                "title": "IR-Trigger Setup",
+                "description": "Do you want to setup IR-Trigger?"
+            }
+        },
+        "abort": {
+            "single_instance_allowed": "Already configured. Only a single configuration possible."
+        }
+    }
+}
