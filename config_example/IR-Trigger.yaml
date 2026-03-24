@@ -21,7 +21,7 @@
   button: "AUDIO_SELECT"
 
 "NEC_50AF09F6":
-  controller: "RC-R2"
+  controller: "C-RT1"
   button: "INPUT_SELECT"
 
 "NEC_50AF0AF5":
@@ -53,16 +53,16 @@
   button: "SCREEN_DISP"
 
 "NEC_50AF12ED":
-  controller: "RC-R2"
+  controller: "C-RT1"
   button: "VOL_UP"
 
 "NEC_50AF15EA":
-  controller: "RC-R2"
+  controller: "C-RT1"
   button: "VOL_DOWN"
 
 "NEC_50AF17E8":
-  controller: "RC-R2"
-  button: "TV_POWER"
+  controller: "C-RT1"
+  button: "POWER"
 
 "NEC_50AF18E7":
   controller: "C-RT1"
