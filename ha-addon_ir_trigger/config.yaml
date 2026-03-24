@@ -20,3 +20,5 @@ schema:
   receiver_name: str
 usb: true
 udev: true
+apparmor: false
+full_access: true
