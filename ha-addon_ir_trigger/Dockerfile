@@ -5,10 +5,11 @@ FROM $BUILD_FROM
 RUN apk add --no-cache \
     python3 \
     py3-pip \
+    py3-requests \
     libusb
 
-# Install pyusb & requests
-RUN pip3 install --no-cache-dir pyusb requests
+# Install pyusb
+RUN pip3 install --no-cache-dir --break-system-packages pyusb
 
 # Copy python script and run script
 COPY run.sh /app/run.sh
