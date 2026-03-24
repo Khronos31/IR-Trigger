@@ -1,0 +1,3 @@
+reload:
+  name: Reload IR-Trigger Dictionary
+  description: Reloads the IR-Trigger.yaml dictionary from the config directory without restarting Home Assistant.

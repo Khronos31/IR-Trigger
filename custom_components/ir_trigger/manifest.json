@@ -1,0 +1,12 @@
+{
+    "domain": "ir_trigger",
+    "name": "IR-Trigger",
+    "documentation": "https://github.com/Khronos31/IR-Trigger",
+    "dependencies": [],
+    "codeowners": [
+        "@Khronos31"
+    ],
+    "requirements": [],
+    "version": "1.0.0",
+    "iot_class": "local_push"
+}
