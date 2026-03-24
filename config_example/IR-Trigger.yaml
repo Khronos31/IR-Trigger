@@ -1,18 +1,18 @@
 # IR-Trigger.yaml - Generated from lua-remote-hub
 
-"AEHA_807F02FD03":
+"AEHA_807F02FD":
   controller: "HDMI-Switcher"
   button: "NUM_1"
 
-"AEHA_807F04FB03":
+"AEHA_807F04FB":
   controller: "HDMI-Switcher"
   button: "NUM_2"
 
-"AEHA_807F06F903":
+"AEHA_807F06F9":
   controller: "HDMI-Switcher"
   button: "NUM_3"
 
-"AEHA_807F08F703":
+"AEHA_807F08F7":
   controller: "HDMI-Switcher"
   button: "NEXT"
 
