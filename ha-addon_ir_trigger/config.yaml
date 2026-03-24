@@ -1,6 +1,6 @@
 name: "IR-Trigger USB Daemon"
 description: "Reads AD00020P USB IR Receiver and sends data to Home Assistant IR-Trigger Integration via Webhook."
-version: "1.0.0"
+version: "1.0.1"
 slug: "ir_trigger_daemon"
 init: false
 arch:
@@ -18,5 +18,5 @@ options:
 schema:
   webhook_url: url
   receiver_name: str
-devices:
-  - "/dev/bus/usb"
+usb: true
+udev: true
