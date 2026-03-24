@@ -23,7 +23,6 @@ udev: true
 apparmor: false
 full_access: true
 host_ipc: true
-host_pid: true
 privileged:
   - SYS_ADMIN
   - SYS_RAWIO

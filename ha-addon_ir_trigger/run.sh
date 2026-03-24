@@ -7,4 +7,4 @@ bashio::log.info "Starting IR Daemon..."
 bashio::log.info "Webhook URL: ${WEBHOOK_URL}"
 bashio::log.info "Receiver Name: ${RECEIVER_NAME}"
 
-python3 /app/ir_daemon.py --url "${WEBHOOK_URL}" --receiver "${RECEIVER_NAME}"
+python3 -u /app/ir_daemon.py --url "${WEBHOOK_URL}" --receiver "${RECEIVER_NAME}"

@@ -115,8 +115,11 @@ def read_ir(dev):
             if in_buf[0] == 0x52 and in_buf[1] != 0:
                 received_data = in_buf[1:]
                 break
-        except usb.core.USBError:
-            pass
+        except usb.core.USBError as e:
+            # 110 is ETIMEDOUT. If it's a different error, we should log it but keep trying
+            if e.errno != 110:
+                # We can't print every time or it will spam, but maybe just pass
+                pass
             
         time.sleep(0.01)
         
@@ -152,6 +155,9 @@ if __name__ == "__main__":
                 code = normalize_ir_data(data)
                 print(f"Received raw data -> Normalized: {code}")
                 send_to_homeassistant(args.url, args.receiver, code)
+            else:
+                # If read_ir returned None (e.g., initial setup failed), sleep to avoid CPU spinning
+                time.sleep(1)
     except KeyboardInterrupt:
         print("\nExiting...")
         usb.util.dispose_resources(dev)
