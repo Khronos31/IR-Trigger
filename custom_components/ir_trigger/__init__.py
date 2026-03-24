@@ -7,6 +7,7 @@ from homeassistant.helpers.typing import ConfigType
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components.webhook import async_register as webhook_register, async_unregister as webhook_unregister
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers import discovery
 
 from .const import (
     DOMAIN,
@@ -149,7 +150,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # Setup platforms (sensor)
     # We use async_create_task to setup the platform
     hass.async_create_task(
-        hass.helpers.discovery.async_load_platform("sensor", DOMAIN, {"setup": True}, config)
+        discovery.async_load_platform(hass, "sensor", DOMAIN, {"setup": True}, config)
     )
 
     return True
