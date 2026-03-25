@@ -55,8 +55,8 @@ class LocalUSBTransmitter(IRTransmitter):
         fmt_str, hex_code = parts
         # Map format string to type byte (based on C++ usbir.h if applicable, 
         # but let's assume 0x01 for NEC as a placeholder or determine from context)
-        # Based on BitTradeOne docs, 1: NEC, 2: AEHA, 3: SONY
-        fmt_map = {"NEC": 1, "AEHA": 2, "SONY": 3}
+        # Based on BitTradeOne docs, 1: AEHA, 2: NEC, 3: SONY
+        fmt_map = {"AEHA": 1, "NEC": 2, "SONY": 3, "MITSUBISHI": 4, "DAIKIN": 5, "DAIKIN2": 6}
         fmt_type = fmt_map.get(fmt_str.upper(), 1)
         
         try:
