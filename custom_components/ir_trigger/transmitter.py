@@ -29,6 +29,14 @@ class LocalUSBTransmitter(IRTransmitter):
         import usb.core
         import usb.util
         
+        if self._dev:
+            try:
+                # Test connectivity
+                self._dev.get_active_configuration()
+                return self._dev
+            except:
+                self._dev = None
+        
         devs = list(usb.core.find(find_all=True, idVendor=self._vid, idProduct=self._pid))
         if not devs or len(devs) <= self.index:
             _LOGGER.error("USB IR Transmitter (index %s) not found", self.index)
@@ -50,11 +58,13 @@ class LocalUSBTransmitter(IRTransmitter):
             
             # Claim interface
             usb.util.claim_interface(dev, self._interface)
+            self._dev = dev
             
         except Exception as e:
-            _LOGGER.debug("Error during device initialization: %s", e)
+            _LOGGER.error("Error during USB device initialization: %s", e)
+            return None
             
-        return dev
+        return self._dev
 
     async def async_send(self, code: str):
         """Send IR code using pyusb."""
@@ -101,14 +111,8 @@ class LocalUSBTransmitter(IRTransmitter):
                     _LOGGER.info("Successfully sent IR code %s via USB", code)
                 except Exception as e:
                     _LOGGER.error("Error sending IR via USB: %s", e)
-                finally:
-                    # Release interface and close
-                    try:
-                        import usb.util
-                        usb.util.release_interface(dev, self._interface)
-                    except:
-                        pass
-                    usb.util.dispose_resources(dev)
+                    # Reset connection on error
+                    self._dev = None
 
         async with self._lock:
             await asyncio.get_event_loop().run_in_executor(None, _send)
