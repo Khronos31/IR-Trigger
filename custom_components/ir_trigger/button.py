@@ -6,7 +6,10 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from .const import (
     DOMAIN,
     ATTR_VIA_DEVICE,
-    SIGNAL_LOAD_COMPLETE
+    SIGNAL_LOAD_COMPLETE,
+    CONF_NAME,
+    CONF_TRANSMITTER,
+    CONF_BUTTONS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -19,19 +22,19 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         """Create buttons for all devices."""
         entities = []
         for device_id, device_info in ir_data.devices.items():
-            transmitter_id = device_info.get("transmitter")
+            transmitter_id = device_info.get(CONF_TRANSMITTER)
             transmitter = ir_data.transmitters.get(transmitter_id)
             
             if not transmitter:
                 _LOGGER.warning("Transmitter %s not found for device %s", transmitter_id, device_id)
                 continue
                 
-            for button_name, ir_code in device_info.get("buttons", {}).items():
+            for button_name, ir_code in device_info.get(CONF_BUTTONS, {}).items():
                 entities.append(
                     IRTriggerButton(
                         hass,
                         device_id,
-                        device_info.get("name", device_id),
+                        device_info.get(CONF_NAME, device_id),
                         button_name,
                         ir_code,
                         transmitter,

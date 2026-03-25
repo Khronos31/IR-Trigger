@@ -9,7 +9,7 @@ from .const import (
     SIGNAL_NEW_RECEIVER,
     SIGNAL_UPDATE_SENSOR,
     ATTR_CODE,
-    ATTR_CONTROLLER,
+    ATTR_DEVICE,
     ATTR_BUTTON,
 )
 
@@ -25,7 +25,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
         _LOGGER.info("Adding sensors for new receiver: %s", receiver)
         sensors = [
             IRTriggerSensor(receiver, ATTR_CODE, "Latest IR Signal", "mdi:remote"),
-            IRTriggerSensor(receiver, ATTR_CONTROLLER, "Latest IR Controller", "mdi:gamepad-variant"),
+            IRTriggerSensor(receiver, ATTR_DEVICE, "Latest IR Device", "mdi:gamepad-variant"),
             IRTriggerSensor(receiver, ATTR_BUTTON, "Latest IR Button", "mdi:radiobox-marked"),
         ]
         async_add_entities(sensors)

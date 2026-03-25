@@ -23,9 +23,12 @@ CONF_SOURCE = "source"
 CONF_TARGET = "target"
 CONF_SERVICE = "service"
 CONF_DATA = "data"
+CONF_NAME = "name"
+CONF_LOCAL_RECEIVERS = "local_receivers"
+CONF_REPEAT = "repeat"
 
 ATTR_RECEIVER = "receiver"
-ATTR_CONTROLLER = "controller"
+ATTR_DEVICE = "device"
 ATTR_BUTTON = "button"
 ATTR_CODE = "code"
 
