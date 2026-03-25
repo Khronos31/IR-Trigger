@@ -32,16 +32,30 @@ ESPHome の `remote_receiver` を使用し、HA内蔵のイベントバスに直
 Linux マシンに直接 AD00020P を接続して使用する場合のスクリプトです。
 
 ### 必要パッケージ (Prerequisites)
-以下のパッケージをあらかじめインストールしておいてください。
+最新の Linux (Debian 12/Raspberry Pi OS) では、システム全体の Python 環境を直接変更することが制限されています。そのため、**仮想環境 (venv)** の使用を強く推奨します。
 
+#### 推奨: 仮想環境 (venv) を使用する
 ```bash
-# Ubuntu/Debian の場合
+# 必要パッケージのインストール
 sudo apt update
-sudo apt install libusb-1.0-0-dev python3-pip
+sudo apt install libusb-1.0-0-dev python3-venv python3-pip
 
-# Python ライブラリ
-pip3 install pyusb requests aiohttp
+# 仮想環境の作成と有効化
+cd edge_scripts
+python3 -m venv venv
+source venv/bin/activate
+
+# 仮想環境内でのライブラリインストール
+pip install pyusb requests aiohttp
 ```
+
+#### 手軽な方法: --break-system-packages を使用する
+OS の警告を無視して直接インストールする場合（自己責任）：
+```bash
+pip3 install pyusb requests aiohttp --break-system-packages
+```
+
+---
 
 1. `edge_scripts/ir_daemon.py` を任意の場所に配置。
 2. 以下の引数で実行：

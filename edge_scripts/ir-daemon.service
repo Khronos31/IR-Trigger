@@ -5,8 +5,9 @@ After=network.target
 [Service]
 Type=simple
 User=root
-# Replace with the actual path to the script and your Home Assistant URL
-ExecStart=/usr/bin/python3 /opt/ir_trigger/ir_daemon.py --url http://127.0.0.1:8123/api/webhook/ir_trigger_webhook --receiver LivingRoom_AD00020P
+# Replace /PATH/TO/... with your actual directory paths
+# Example: /home/pi/IR-Trigger/edge_scripts/venv/bin/python
+ExecStart=/PATH/TO/PYTHON /PATH/TO/ir_daemon.py --url http://YOUR_HA_IP:8123/api/webhook/ir_trigger_webhook --receiver MyReceiver
 Restart=always
 RestartSec=5
 # If pyusb requires root privileges to access the USB device, keep User=root
