@@ -37,31 +37,52 @@ class LocalUSBTransmitter(IRTransmitter):
             except:
                 self._dev = None
         
+        # Determine devices
         devs = list(usb.core.find(find_all=True, idVendor=self._vid, idProduct=self._pid))
-        if not devs or len(devs) <= self.index:
-            _LOGGER.error("USB IR Transmitter (index %s) not found", self.index)
+        if not devs:
+            _LOGGER.error("No USB IR Transmitter found (VID: 0x%04x, PID: 0x%04x)", self._vid, self._pid)
             return None
-        
-        dev = devs[self.index]
+            
+        if len(devs) <= self.index:
+            _LOGGER.error("USB IR Transmitter index %s is out of range (found %s devices)", self.index, len(devs))
+            # Fallback to first device if index 1 was used by mistake
+            if self.index > 0:
+                _LOGGER.warning("Falling back to index 0")
+                dev = devs[0]
+            else:
+                return None
+        else:
+            dev = devs[self.index]
         
         try:
-            # Set configuration 1 (default)
-            dev.set_configuration()
+            # Set configuration
+            try:
+                dev.set_configuration()
+            except usb.core.USBError as e:
+                if e.errno == 16: # Resource busy
+                    _LOGGER.debug("Device already configured or busy: %s", e)
+                else:
+                    raise
             
-            # Detach kernel driver if active (Linux)
-            if hasattr(dev, 'is_kernel_driver_active'):
-                try:
-                    if dev.is_kernel_driver_active(self._interface):
-                        dev.detach_kernel_driver(self._interface)
-                except Exception as e:
-                    _LOGGER.debug("Could not detach kernel driver: %s", e)
+            # Detach kernel driver (Linux specific, but handled safely)
+            try:
+                if dev.is_kernel_driver_active(self._interface):
+                    dev.detach_kernel_driver(self._interface)
+            except (usb.core.USBError, NotImplementedError):
+                pass
             
             # Claim interface
-            usb.util.claim_interface(dev, self._interface)
+            try:
+                usb.util.claim_interface(dev, self._interface)
+            except usb.core.USBError as e:
+                _LOGGER.error("Could not claim interface %s: %s. Is another process using the device?", self._interface, e)
+                return None
+            
             self._dev = dev
+            _LOGGER.info("Successfully initialized USB IR Transmitter (index %s)", self.index)
             
         except Exception as e:
-            _LOGGER.error("Error during USB device initialization: %s", e)
+            _LOGGER.error("Failed to open USB device: %s", e)
             return None
             
         return self._dev
