@@ -31,6 +31,18 @@ ESPHome の `remote_receiver` を使用し、HA内蔵のイベントバスに直
 
 Linux マシンに直接 AD00020P を接続して使用する場合のスクリプトです。
 
+### 必要パッケージ (Prerequisites)
+以下のパッケージをあらかじめインストールしておいてください。
+
+```bash
+# Ubuntu/Debian の場合
+sudo apt update
+sudo apt install libusb-1.0-0-dev python3-pip
+
+# Python ライブラリ
+pip3 install pyusb requests aiohttp
+```
+
 1. `edge_scripts/ir_daemon.py` を任意の場所に配置。
 2. 以下の引数で実行：
    - `--url`: Webhook URL

@@ -100,6 +100,8 @@ class IRTriggerData:
                 self.transmitters[tx_id] = LocalUSBTransmitter(tx_info.get(CONF_INDEX, 0))
             elif tx_type == "esphome":
                 self.transmitters[tx_id] = ESPHomeTransmitter(self.hass, tx_info.get(CONF_ENTITY_ID))
+            elif tx_type == "webhook":
+                self.transmitters[tx_id] = WebhookTransmitter(tx_info.get("url"))
             else:
                 _LOGGER.warning("Unknown transmitter type %s for %s, using mock", tx_type, tx_id)
                 self.transmitters[tx_id] = MockTransmitter()

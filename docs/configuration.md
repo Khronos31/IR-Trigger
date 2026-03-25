@@ -11,9 +11,10 @@
 | キー | 型 | 内容 |
 | :--- | :--- | :--- |
 | `name` | string | Home Assistant 上での表示名 |
-| `type` | string | `local_usb` または `esphome` |
+| `type` | string | `local_usb`, `esphome`, `webhook` |
 | `index` | int | USB デバイスのインデックス（0から開始） |
 | `entity_id` | string | ESPHome 送信機の場合のリモートエンティティID |
+| `url` | string | Webhook 送信機の場合の送信先URL |
 | `local_receivers` | list | この送信機の近くにある受信機のリスト（ループ防止用） |
 
 ---

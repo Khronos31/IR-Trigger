@@ -166,6 +166,31 @@ class ESPHomeTransmitter(IRTransmitter):
             blocking=True
         )
 
+class WebhookTransmitter(IRTransmitter):
+    """Transmitter using Webhook (POST request)."""
+    
+    def __init__(self, url: str):
+        self.url = url
+        import aiohttp
+        self._session = None
+
+    async def _get_session(self):
+        import aiohttp
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def async_send(self, code: str):
+        """Send IR code via Webhook."""
+        session = await self._get_session()
+        _LOGGER.info("Sending IR code %s via Webhook to %s", code, self.url)
+        try:
+            async with session.post(self.url, json={"code": code}, timeout=10) as response:
+                if response.status >= 400:
+                    _LOGGER.error("Webhook transmitter failed with status %s", response.status)
+        except Exception as e:
+            _LOGGER.error("Error sending Webhook IR: %s", e)
+
 class MockTransmitter(IRTransmitter):
     """Mock transmitter for development."""
     async def async_send(self, code: str):
