@@ -80,5 +80,5 @@ class IRTriggerButton(ButtonEntity):
             "name": self._device_name,
             "manufacturer": "IR-Trigger",
             "model": "Target Device",
-            "via_device": (DOMAIN, self._transmitter_id),
+            ATTR_VIA_DEVICE: (DOMAIN, self._transmitter_id),
         }

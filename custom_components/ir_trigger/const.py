@@ -31,6 +31,7 @@ ATTR_RECEIVER = "receiver"
 ATTR_DEVICE = "device"
 ATTR_BUTTON = "button"
 ATTR_CODE = "code"
+ATTR_VIA_DEVICE = "via_device"
 
 SIGNAL_NEW_RECEIVER = f"{DOMAIN}_new_receiver"
 SIGNAL_UPDATE_SENSOR = f"{DOMAIN}_update_sensor"
