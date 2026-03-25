@@ -23,6 +23,7 @@ class LocalUSBTransmitter(IRTransmitter):
         self._pid = 0x001e
         self._interface = 3
         self._endpoint_out = 0x04
+        self._lock = asyncio.Lock()
 
     def _open_device(self):
         import usb.core
@@ -35,12 +36,23 @@ class LocalUSBTransmitter(IRTransmitter):
         
         dev = devs[self.index]
         
-        # In Windows, we might not need to detach kernel driver if using libusb-win32 or WinUSB
-        # but pyusb handle it via set_configuration
         try:
+            # Set configuration 1 (default)
             dev.set_configuration()
+            
+            # Detach kernel driver if active (Linux)
+            if hasattr(dev, 'is_kernel_driver_active'):
+                try:
+                    if dev.is_kernel_driver_active(self._interface):
+                        dev.detach_kernel_driver(self._interface)
+                except Exception as e:
+                    _LOGGER.debug("Could not detach kernel driver: %s", e)
+            
+            # Claim interface
+            usb.util.claim_interface(dev, self._interface)
+            
         except Exception as e:
-            _LOGGER.debug("Could not set configuration: %s", e)
+            _LOGGER.debug("Error during device initialization: %s", e)
             
         return dev
 
@@ -90,11 +102,16 @@ class LocalUSBTransmitter(IRTransmitter):
                 except Exception as e:
                     _LOGGER.error("Error sending IR via USB: %s", e)
                 finally:
-                    # We don't necessarily want to close it every time if it's slow, 
-                    # but for now let's keep it simple.
+                    # Release interface and close
+                    try:
+                        import usb.util
+                        usb.util.release_interface(dev, self._interface)
+                    except:
+                        pass
                     usb.util.dispose_resources(dev)
 
-        await asyncio.get_event_loop().run_in_executor(None, _send)
+        async with self._lock:
+            await asyncio.get_event_loop().run_in_executor(None, _send)
 
 class ESPHomeTransmitter(IRTransmitter):
     """Transmitter using ESPHome remote entity."""
