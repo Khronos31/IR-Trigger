@@ -1,0 +1,65 @@
+# IR-Trigger.yaml
+
+# 1. モード管理エンティティ
+mode_entity: input_select.ir_remote_mode
+
+# 2. 送信機（ハブ）の定義
+transmitters:
+  tx_myroom_ad00020p:
+    name: "自室 AD00020P 送信機"
+    type: "local_usb"
+    index: 0
+  tx_living_atom:
+    name: "リビング AtomS3 送信機"
+    type: "esphome"
+    entity_id: "remote.atom_s3_living"
+
+# 3. 家電（ターゲット）とボタンの定義
+devices:
+  Master_CRT1: # 物理マスターリモコン（受信トリガー専用）
+    name: "マスターリモコン C-RT1"
+    type: "ir"
+    buttons:
+      MODE_TV: "NEC_56A94AB5"
+      MODE_REC: "NEC_56A939C6"
+      VOL_UP: "NEC_50AF12ED"
+      VOL_DOWN: "NEC_50AF15EA"
+
+  TV_MyRoom:
+    name: "自室のテレビ"
+    transmitter: "tx_myroom_ad00020p" # via_deviceで親ハブを指定
+    buttons:
+      VOL_UP: "NEC_50AF12ED" # 実機コード（Master_CRT1と同じ場合はbindで自動連動）
+      VOL_DOWN: "NEC_50AF15EA"
+      POWER: "NEC_50AF17E8"
+
+  Recorder_Living:
+    name: "リビングのレコーダー"
+    transmitter: "tx_living_atom"
+    buttons:
+      VOL_UP: "NEC_80EA1AE5"
+      VOL_DOWN: "NEC_80EA1EE1"
+
+# 4. ルーティング（モード）の定義
+modes:
+  TV:
+    bind:
+      - source: Master_CRT1
+        target: TV_MyRoom
+    remap:
+       "NEC_56A939C6": # Master_CRT1のMODE_RECボタン
+         service: input_select.select_option
+         data:
+           entity_id: input_select.ir_remote_mode
+           option: REC
+
+  REC:
+    bind:
+      - source: Master_CRT1
+        target: Recorder_Living
+    remap:
+       "NEC_56A94AB5": # Master_CRT1 of MODE_TV button
+         service: input_select.select_option
+         data:
+           entity_id: input_select.ir_remote_mode
+           option: TV

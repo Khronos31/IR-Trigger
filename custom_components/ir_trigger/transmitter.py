@@ -1,0 +1,130 @@
+import logging
+import asyncio
+from abc import ABC, abstractmethod
+from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
+
+class IRTransmitter(ABC):
+    """Base class for IR Transmitters."""
+    
+    @abstractmethod
+    async def async_send(self, code: str):
+        """Send an IR code."""
+        pass
+
+class LocalUSBTransmitter(IRTransmitter):
+    """Transmitter using pyusb for local USB devices."""
+    
+    def __init__(self, index: int = 0):
+        self.index = index
+        self._dev = None
+        self._vid = 0x22ea
+        self._pid = 0x001e
+        self._interface = 3
+        self._endpoint_out = 0x04
+
+    def _open_device(self):
+        import usb.core
+        import usb.util
+        
+        devs = list(usb.core.find(find_all=True, idVendor=self._vid, idProduct=self._pid))
+        if not devs or len(devs) <= self.index:
+            _LOGGER.error("USB IR Transmitter (index %s) not found", self.index)
+            return None
+        
+        dev = devs[self.index]
+        
+        # In Windows, we might not need to detach kernel driver if using libusb-win32 or WinUSB
+        # but pyusb handle it via set_configuration
+        try:
+            dev.set_configuration()
+        except Exception as e:
+            _LOGGER.debug("Could not set configuration: %s", e)
+            
+        return dev
+
+    async def async_send(self, code: str):
+        """Send IR code using pyusb."""
+        # Split code (e.g., "NEC_56A912ED") into format and bytes
+        parts = code.split('_')
+        if len(parts) != 2:
+            _LOGGER.error("Invalid IR code format for USB: %s", code)
+            return
+
+        fmt_str, hex_code = parts
+        # Map format string to type byte (based on C++ usbir.h if applicable, 
+        # but let's assume 0x01 for NEC as a placeholder or determine from context)
+        # Based on BitTradeOne docs, 1: NEC, 2: AEHA, 3: SONY
+        fmt_map = {"NEC": 1, "AEHA": 2, "SONY": 3}
+        fmt_type = fmt_map.get(fmt_str.upper(), 1)
+        
+        try:
+            byte_data = bytes.fromhex(hex_code)
+        except ValueError:
+            _LOGGER.error("Invalid hex code: %s", hex_code)
+            return
+
+        # Prepare packet (0x61, fmt, len1, len2, data...)
+        # len1/len2 logic from C++:
+        # int code_len_check = (int)((code_len1 + code_len2) / 8);
+        # bit length is usually len(byte_data) * 8
+        bit_len = len(byte_data) * 8
+        len1 = bit_len & 0xFF
+        len2 = (bit_len >> 8) & 0xFF
+        
+        packet = bytearray(64)
+        packet[0] = 0x61
+        packet[1] = fmt_type
+        packet[2] = len1
+        packet[3] = len2
+        packet[4:4+len(byte_data)] = byte_data
+        
+        def _send():
+            import usb.core
+            dev = self._open_device()
+            if dev:
+                try:
+                    dev.write(self._endpoint_out, packet, timeout=1000)
+                    _LOGGER.info("Successfully sent IR code %s via USB", code)
+                except Exception as e:
+                    _LOGGER.error("Error sending IR via USB: %s", e)
+                finally:
+                    # We don't necessarily want to close it every time if it's slow, 
+                    # but for now let's keep it simple.
+                    usb.util.dispose_resources(dev)
+
+        await asyncio.get_event_loop().run_in_executor(None, _send)
+
+class ESPHomeTransmitter(IRTransmitter):
+    """Transmitter using ESPHome remote entity."""
+    
+    def __init__(self, hass: HomeAssistant, entity_id: str):
+        self.hass = hass
+        self.entity_id = entity_id
+
+    async def async_send(self, code: str):
+        """Send IR code via HA service call."""
+        # Split code (e.g., "NEC_56A912ED")
+        parts = code.split('_')
+        if len(parts) != 2:
+            _LOGGER.error("Invalid IR code format for ESPHome: %s", code)
+            return
+            
+        protocol, signal = parts
+        
+        _LOGGER.info("Sending IR code %s via ESPHome %s", code, self.entity_id)
+        await self.hass.services.async_call(
+            "remote",
+            "send_command",
+            {
+                "entity_id": self.entity_id,
+                "command": f"protocol: {protocol}, data: 0x{signal}"
+            },
+            blocking=True
+        )
+
+class MockTransmitter(IRTransmitter):
+    """Mock transmitter for development."""
+    async def async_send(self, code: str):
+        _LOGGER.info("[MOCK] Sending IR code: %s", code)

@@ -1,0 +1,81 @@
+import logging
+from homeassistant.components.button import ButtonEntity
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
+
+from .const import (
+    DOMAIN,
+    ATTR_VIA_DEVICE,
+    SIGNAL_LOAD_COMPLETE
+)
+
+_LOGGER = logging.getLogger(__name__)
+
+async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
+    """Set up the IR-Trigger button platform from a config entry."""
+    ir_data = hass.data[DOMAIN]
+    
+    async def async_setup_buttons():
+        """Create buttons for all devices."""
+        entities = []
+        for device_id, device_info in ir_data.devices.items():
+            transmitter_id = device_info.get("transmitter")
+            transmitter = ir_data.transmitters.get(transmitter_id)
+            
+            if not transmitter:
+                _LOGGER.warning("Transmitter %s not found for device %s", transmitter_id, device_id)
+                continue
+                
+            for button_name, ir_code in device_info.get("buttons", {}).items():
+                entities.append(
+                    IRTriggerButton(
+                        hass,
+                        device_id,
+                        device_info.get("name", device_id),
+                        button_name,
+                        ir_code,
+                        transmitter,
+                        transmitter_id
+                    )
+                )
+        
+        async_add_entities(entities)
+
+    # If data is already loaded, setup buttons now
+    if ir_data.loaded:
+        await async_setup_buttons()
+    else:
+        # Otherwise wait for the signal
+        async_dispatcher_connect(hass, SIGNAL_LOAD_COMPLETE, async_setup_buttons)
+
+class IRTriggerButton(ButtonEntity):
+    """Representation of an IR Trigger Button."""
+
+    def __init__(self, hass, device_id, device_name, button_name, ir_code, transmitter, transmitter_id):
+        """Initialize the button."""
+        self.hass = hass
+        self._device_id = device_id
+        self._device_name = device_name
+        self._button_name = button_name
+        self._ir_code = ir_code
+        self._transmitter = transmitter
+        self._transmitter_id = transmitter_id
+        
+        self._attr_name = f"{device_name} {button_name}"
+        self._attr_unique_id = f"ir_trigger_btn_{device_id}_{button_name}"
+
+    async def async_press(self) -> None:
+        """Handle the button press."""
+        _LOGGER.info("Button pressed: %s (%s)", self._attr_name, self._ir_code)
+        await self._transmitter.async_send(self._ir_code)
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        return {
+            "identifiers": {(DOMAIN, self._device_id)},
+            "name": self._device_name,
+            "manufacturer": "IR-Trigger",
+            "model": "Target Device",
+            "via_device": (DOMAIN, self._transmitter_id),
+        }
