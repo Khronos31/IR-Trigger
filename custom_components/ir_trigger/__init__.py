@@ -87,7 +87,7 @@ class IRTriggerData:
             
             self.loaded = True
             _LOGGER.info("IR-Trigger configuration loaded successfully")
-            async_dispatcher_send(self.hass, SIGNAL_LOAD_COMPLETE)
+            self.hass.add_job(async_dispatcher_send, self.hass, SIGNAL_LOAD_COMPLETE)
             
         except Exception as e:
             _LOGGER.error("Error loading %s: %s", config_path, e)
@@ -171,14 +171,14 @@ class IRTriggerData:
             "device_id": info.get("device_id")
         }
 
-    async def async_register_devices(self):
+    async def async_register_devices(self, entry):
         """Register transmitters and target devices in HA device registry."""
         dev_reg = dr.async_get(self.hass)
         
         # Register Transmitters
         for tx_id, tx_info in self.transmitters_config.items():
             dev_reg.async_get_or_create(
-                config_entry_id=DOMAIN,
+                config_entry_id=entry.entry_id,
                 identifiers={(DOMAIN, tx_id)},
                 name=tx_info.get(CONF_NAME, tx_id),
                 manufacturer="IR-Trigger",
@@ -315,7 +315,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 async def async_setup_entry(hass, entry):
     """Set up IR-Trigger from a config entry."""
     ir_data = hass.data[DOMAIN]
-    await ir_data.async_register_devices()
+    await ir_data.async_register_devices(entry)
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
     return True
 
