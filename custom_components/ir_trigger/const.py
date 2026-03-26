@@ -26,6 +26,7 @@ CONF_DATA = "data"
 CONF_NAME = "name"
 CONF_LOCAL_RECEIVERS = "local_receivers"
 CONF_REPEAT = "repeat"
+CONF_FORCE_AEHA_TX = "force_aeha_tx"
 
 ATTR_RECEIVER = "receiver"
 ATTR_DEVICE = "device"

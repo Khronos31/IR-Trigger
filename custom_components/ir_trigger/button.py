@@ -10,7 +10,9 @@ from .const import (
     CONF_NAME,
     CONF_TRANSMITTER,
     CONF_BUTTONS,
+    CONF_FORCE_AEHA_TX,
 )
+from .transmitter import LocalUSBTransmitter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,7 +43,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         button_name,
                         ir_code,
                         transmitter,
-                        transmitter_id
+                        transmitter_id,
+                        device_info.get(CONF_FORCE_AEHA_TX, False)
                     )
                 )
         
@@ -66,6 +69,7 @@ class IRTriggerButton(ButtonEntity):
         self._ir_code = ir_code
         self._transmitter = transmitter
         self._transmitter_id = transmitter_id
+        self._force_aeha_tx = force_aeha_tx
         
         self._attr_name = f"{device_name} {button_name}"
         self._attr_unique_id = f"ir_trigger_btn_{device_id}_{button_name}"
@@ -73,7 +77,13 @@ class IRTriggerButton(ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press."""
         _LOGGER.info("Button pressed: %s (%s)", self._attr_name, self._ir_code)
-        await self._transmitter.async_send(self._ir_code)
+        
+        code_to_send = self._ir_code
+        if self._force_aeha_tx and code_to_send.startswith("NEC_") and isinstance(self._transmitter, LocalUSBTransmitter):
+            code_to_send = code_to_send.replace("NEC_", "AEHA_", 1)
+            _LOGGER.debug("Converted NEC to AEHA for hardware bug workaround (button): %s -> %s", self._ir_code, code_to_send)
+            
+        await self._transmitter.async_send(code_to_send)
 
     @property
     def device_info(self):
