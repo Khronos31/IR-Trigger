@@ -60,7 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
 class IRTriggerButton(ButtonEntity):
     """Representation of an IR Trigger Button."""
 
-    def __init__(self, hass, device_id, device_name, button_name, ir_code, transmitter, transmitter_id):
+    def __init__(self, hass, device_id, device_name, button_name, ir_code, transmitter, transmitter_id, force_aeha_tx):
         """Initialize the button."""
         self.hass = hass
         self._device_id = device_id
