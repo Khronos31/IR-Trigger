@@ -177,6 +177,13 @@ devices:
   RC-R2:
     name: "スタディのレコーダー"
     transmitter: tx_study_ad00020p
+    domain: "media_player"
+    mapping:
+      turn_on: "POWER"
+      turn_off: "POWER"
+      play: "PLAY"
+      pause: "PAUSE"
+      stop: "STOP"
     buttons:
       POWER: NEC_86FF00FF
       SCREEN_DISP: NEC_86FF03FC

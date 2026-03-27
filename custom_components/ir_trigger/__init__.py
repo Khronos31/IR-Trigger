@@ -322,9 +322,13 @@ async def async_setup_entry(hass, entry):
     """Set up IR-Trigger from a config entry."""
     ir_data = hass.data[DOMAIN]
     await ir_data.async_register_devices(entry)
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button"])
+    await hass.config_entries.async_forward_entry_setups(
+        entry, ["sensor", "button", "light", "switch", "media_player"]
+    )
     return True
 
 async def async_unload_entry(hass, entry):
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, ["sensor", "button"])
+    return await hass.config_entries.async_unload_platforms(
+        entry, ["sensor", "button", "light", "switch", "media_player"]
+    )
