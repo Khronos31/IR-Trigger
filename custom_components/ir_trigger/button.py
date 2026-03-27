@@ -77,13 +77,7 @@ class IRTriggerButton(ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press."""
         _LOGGER.info("Button pressed: %s (%s)", self._attr_name, self._ir_code)
-        
-        code_to_send = self._ir_code
-        if self._force_aeha_tx and code_to_send.startswith("NEC_") and isinstance(self._transmitter, LocalUSBTransmitter):
-            code_to_send = code_to_send.replace("NEC_", "AEHA_", 1)
-            _LOGGER.debug("Converted NEC to AEHA for hardware bug workaround (button): %s -> %s", self._ir_code, code_to_send)
-            
-        await self._transmitter.async_send(code_to_send)
+        await self._transmitter.async_send(self._ir_code, force_aeha_tx=self._force_aeha_tx)
 
     @property
     def device_info(self):

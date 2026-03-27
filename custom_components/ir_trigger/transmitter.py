@@ -9,7 +9,7 @@ class IRTransmitter(ABC):
     """Base class for IR Transmitters."""
     
     @abstractmethod
-    async def async_send(self, code: str):
+    async def async_send(self, code: str, force_aeha_tx: bool = False):
         """Send an IR code."""
         pass
 
@@ -87,8 +87,13 @@ class LocalUSBTransmitter(IRTransmitter):
             
         return self._dev
 
-    async def async_send(self, code: str):
+    async def async_send(self, code: str, force_aeha_tx: bool = False):
         """Send IR code using pyusb."""
+        # Hardware workaround: Convert NEC to AEHA if requested
+        if force_aeha_tx and code.startswith("NEC_"):
+            code = code.replace("NEC_", "AEHA_", 1)
+            _LOGGER.debug("Converted NEC to AEHA for hardware bug workaround: %s", code)
+
         # Split code (e.g., "NEC_56A912ED") into format and bytes
         parts = code.split('_')
         if len(parts) != 2:
@@ -145,7 +150,7 @@ class ESPHomeTransmitter(IRTransmitter):
         self.hass = hass
         self.entity_id = entity_id
 
-    async def async_send(self, code: str):
+    async def async_send(self, code: str, force_aeha_tx: bool = False):
         """Send IR code via HA service call."""
         # Split code (e.g., "NEC_56A912ED")
         parts = code.split('_')
@@ -180,7 +185,7 @@ class WebhookTransmitter(IRTransmitter):
             self._session = aiohttp.ClientSession()
         return self._session
 
-    async def async_send(self, code: str):
+    async def async_send(self, code: str, force_aeha_tx: bool = False):
         """Send IR code via Webhook."""
         session = await self._get_session()
         _LOGGER.info("Sending IR code %s via Webhook to %s", code, self.url)
@@ -193,5 +198,5 @@ class WebhookTransmitter(IRTransmitter):
 
 class MockTransmitter(IRTransmitter):
     """Mock transmitter for development."""
-    async def async_send(self, code: str):
-        _LOGGER.info("[MOCK] Sending IR code: %s", code)
+    async def async_send(self, code: str, force_aeha_tx: bool = False):
+        _LOGGER.info("[MOCK] Sending IR code: %s (force_aeha_tx=%s)", code, force_aeha_tx)

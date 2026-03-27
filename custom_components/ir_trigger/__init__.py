@@ -1,6 +1,5 @@
 import logging
 import os
-import yaml
 
 from homeassistant.core import HomeAssistant, ServiceCall, Event
 from homeassistant.helpers.typing import ConfigType
@@ -8,6 +7,7 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.components.webhook import async_register as webhook_register, async_unregister as webhook_unregister
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers import device_registry as dr
+from homeassistant.util.yaml import load_yaml
 
 from .const import (
     DOMAIN,
@@ -70,9 +70,7 @@ class IRTriggerData:
             return
 
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = yaml.safe_load(f)
-                
+            config = load_yaml(config_path)
             self.mode_entity = config.get(CONF_MODE_ENTITY)
             
             # 1. Setup Transmitters
@@ -283,14 +281,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                         )
                     elif transmitter:
                         _LOGGER.info("Auto-Repeating IR code %s for %s", code, device_id)
-                        
-                        code_to_send = code
                         force_aeha = target_dev_info.get(CONF_FORCE_AEHA_TX, False)
-                        if force_aeha and code.startswith("NEC_") and isinstance(transmitter, LocalUSBTransmitter):
-                            code_to_send = code.replace("NEC_", "AEHA_", 1)
-                            _LOGGER.debug("Converted NEC to AEHA for hardware bug workaround: %s -> %s", code, code_to_send)
-                            
-                        await transmitter.async_send(code_to_send)
+                        await transmitter.async_send(code, force_aeha_tx=force_aeha)
 
             # 2.2. Dynamic Routing Logic (bind/remap)
             mapping = ir_data.modes_map.get(mode_name, {})
@@ -302,12 +294,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     tx_id = action["transmitter"]
                     transmitter = ir_data.transmitters.get(tx_id)
                     if transmitter:
-                        code_to_send = action["code"]
-                        if action.get("force_aeha_tx") and code_to_send.startswith("NEC_") and isinstance(transmitter, LocalUSBTransmitter):
-                            code_to_send = code_to_send.replace("NEC_", "AEHA_", 1)
-                            _LOGGER.debug("Converted NEC to AEHA for hardware bug workaround (routing): %s -> %s", action["code"], code_to_send)
-                            
-                        await transmitter.async_send(code_to_send)
+                        await transmitter.async_send(
+                            action["code"], 
+                            force_aeha_tx=action.get("force_aeha_tx", False)
+                        )
                 
                 elif action["type"] == "action":
                     for act_info in action["actions"]:

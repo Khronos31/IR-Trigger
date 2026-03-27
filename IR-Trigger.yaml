@@ -111,6 +111,7 @@ devices:
   HDMI-Switcher:
     name: "スタディのHDMI"
     transmitter: tx_study_ad00020p
+    force_aeha_tx: true
     buttons:
       NUM_1: NEC_807F02FD
       NUM_2: NEC_807F04FB
