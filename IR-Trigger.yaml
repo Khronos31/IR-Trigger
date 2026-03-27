@@ -1,17 +1,19 @@
 # IR-Trigger.yaml - Generated from Lua configs
 
 mode_entity: input_select.ir_remote_mode
+
 transmitters:
   tx_study_ad00020p:
-    name: スタディのIR送信機 (AD00020P)
+    name: "スタディのIR送信機 (AD00020P)"
     type: local_usb
     index: 1
     local_receivers:
-    - rx_study_ad00020p
-    - rx_study_atom
+      - rx_study_ad00020p
+      - rx_study_atom
+
 devices:
   C-RT1:
-    name: C-RT1
+    name: "C-RT1"
     buttons:
       POWER: NEC_50AF17E8
       SCREEN_DISP: NEC_50AF10EF
@@ -105,16 +107,19 @@ devices:
       REC_MODE: NEC_56A931CE
       REC: NEC_56A930CF
       WIDE_SELECT: NEC_50AF6F90
+
   HDMI-Switcher:
-    name: スタディのHDMI
-    buttons:
-      NUM_1: AEHA_807F02FD03
-      NUM_2: AEHA_807F04FB03
-      NUM_3: AEHA_807F06F903
-      NEXT: AEHA_807F08F703
+    name: "スタディのHDMI"
     transmitter: tx_study_ad00020p
+    buttons:
+      NUM_1: NEC_807F02FD
+      NUM_2: NEC_807F04FB
+      NUM_3: NEC_807F06F9
+      NEXT: NEC_807F08F7
+
   J-MX100RC:
-    name: スタディのテレビ
+    name: "スタディのテレビ"
+    transmitter: tx_study_ad00020p
     buttons:
       MUTE: NEC_80EA10EF
       POWER: NEC_80EA12ED
@@ -167,9 +172,10 @@ devices:
       FAST_FORWARD: NEC_80EA6A95
       PAUSE: NEC_80EA6897
       SKIP_30S: NEC_80EA23DC
-    transmitter: tx_study_ad00020p
+
   RC-R2:
-    name: スタディのレコーダー
+    name: "スタディのレコーダー"
+    transmitter: tx_study_ad00020p
     buttons:
       POWER: NEC_86FF00FF
       SCREEN_DISP: NEC_86FF03FC
@@ -222,14 +228,14 @@ devices:
       REC_MODE: NEC_86FFAC53
       REC: NEC_86FF807F
       SUBTITLE: NEC_86FFAD52
-    transmitter: tx_study_ad00020p
+
 modes:
   always:
     repeat:
-    - HDMI-Switcher
-    - J-MX100RC
-    - RC-R2
+      - HDMI-Switcher
+      - J-MX100RC
+      - RC-R2
   TV:
     bind:
-      source: C-RT1
-      target: J-MX100RC
+      - source: C-RT1
+        target: J-MX100RC
