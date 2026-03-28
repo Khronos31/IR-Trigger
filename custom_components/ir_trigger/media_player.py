@@ -35,6 +35,10 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                 continue
 
             transmitter_id = device_info.get(CONF_TRANSMITTER)
+            if not transmitter_id:
+                # Silently skip devices without a transmitter (e.g., remotes)
+                continue
+
             transmitter = ir_data.transmitters.get(transmitter_id)
             if not transmitter:
                 _LOGGER.warning("Transmitter %s not found for media_player %s", transmitter_id, device_id)
