@@ -5,6 +5,11 @@ mapping:
   volume_up: "VOL_UP"
   volume_down: "VOL_DOWN"
   volume_mute: "MUTE"
+  play: "PLAY"
+  pause: "PAUSE"
+  stop: "STOP"
+  next_track: "NEXT_SKIP"
+  previous_track: "PREV_SKIP"
 buttons:
   MUTE: NEC_80EA10EF
   POWER: NEC_80EA12ED
