@@ -35,7 +35,7 @@ devices:
     name: "スタディのHDMI"
     transmitter: "tx_study_ad00020p"
     force_aeha_tx: true
-    template: "HDMI-Switcher"
+    template: "UGREEN-55857"
 
   Light_Living:
     name: "リビングのライト"
@@ -45,15 +45,14 @@ devices:
 modes:
   always:
     repeat:
-      - Target_TV_Study
-      - Target_TV_Living
-      - Target_Recorder_Study
-      - Target_HDMI_Study
-      - Target_Light_Living
+      - TV_Study
+      - Recorder_Study
+      - HDMI_Study
+      - Light_Living
   TV:
     bind:
-      - source: Master_CRT1
-        target: Target_TV_Study
+      - source: C_RT1
+        target: TV_Study
     remap:
       "NEC_56A939C6":
         - service: input_select.select_option
