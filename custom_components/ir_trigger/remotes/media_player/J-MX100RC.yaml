@@ -1,3 +1,10 @@
+domain: "media_player"
+mapping:
+  turn_on: "POWER"
+  turn_off: "POWER"
+  volume_up: "VOL_UP"
+  volume_down: "VOL_DOWN"
+  volume_mute: "MUTE"
 buttons:
   MUTE: NEC_80EA10EF
   POWER: NEC_80EA12ED
