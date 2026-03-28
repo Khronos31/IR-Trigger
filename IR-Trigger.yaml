@@ -17,33 +17,28 @@ transmitters:
       - rx_living_ad00020p
 
 devices:
-  Master_CRT1:
+  C_RT1:
     name: "C-RT1"
     template: "C-RT1"
 
-  Target_TV_Study:
+  TV_Study:
     name: "スタディのテレビ"
     transmitter: "tx_study_ad00020p"
     template: "J-MX100RC"
 
-  Target_TV_Living:
-    name: "リビングのテレビ"
-    transmitter: "tx_living_atom"
-    template: "J-MX100RC"
-
-  Target_Recorder_Study:
+  Recorder_Study:
     name: "スタディのレコーダー"
     transmitter: "tx_study_ad00020p"
     template: "RC-R2"
 
-  Target_HDMI_Study:
+  HDMI_Study:
     name: "スタディのHDMI"
     transmitter: "tx_study_ad00020p"
     force_aeha_tx: true
     template: "HDMI-Switcher"
 
-  Target_Light_Living:
-    name: "リビングの照明"
+  Light_Living:
+    name: "リビングのライト"
     transmitter: "tx_living_atom"
     template: "IR-A04HS"
 
