@@ -11,6 +11,8 @@ CONF_MODE_ENTITY = "mode_entity"
 CONF_TRANSMITTERS = "transmitters"
 CONF_DEVICES = "devices"
 CONF_MODES = "modes"
+CONF_GLOBAL = "global"
+CONF_STATE_MACHINES = "state_machines"
 
 CONF_TYPE = "type"
 CONF_INDEX = "index"

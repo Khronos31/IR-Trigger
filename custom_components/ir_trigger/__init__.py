@@ -21,6 +21,8 @@ from .const import (
     CONF_TRANSMITTERS,
     CONF_DEVICES,
     CONF_MODES,
+    CONF_GLOBAL,
+    CONF_STATE_MACHINES,
     CONF_TYPE,
     CONF_INDEX,
     CONF_ENTITY_ID,
@@ -68,12 +70,12 @@ class IRTriggerData:
         self.hass = hass
         self.dictionary = {}
         self.known_receivers = set()
-        self.mode_entity = None
         self.transmitters_config = {} # transmitter_id -> config
         self.transmitters = {}        # transmitter_id -> instance
         self.devices = {}
-        self.modes_map = {} # mode_name -> { source_code -> action }
-        self.repeat_map = {} # mode_name -> [device_id]
+        self.global_repeat = []
+        self.global_remap = {} # source_code -> action
+        self.state_machines = [] # List of { mode_entity, modes_map: { mode_name -> { source_code -> action } } }
         self.loaded = False
 
     def load_config(self):
@@ -84,7 +86,6 @@ class IRTriggerData:
 
         try:
             config = load_yaml(config_path)
-            self.mode_entity = config.get(CONF_MODE_ENTITY)
             
             # 1. Setup Transmitters
             self.transmitters_config = config.get(CONF_TRANSMITTERS, {})
@@ -95,8 +96,8 @@ class IRTriggerData:
             self.devices = self._process_devices(devices_raw)
             self._build_reverse_dictionary()
             
-            # 3. Setup Modes (Binding, Remapping, Repeating)
-            self._setup_modes(config.get(CONF_MODES, {}))
+            # 3. Setup Routing (Global & State Machines)
+            self._setup_routing(config)
             
             self.loaded = True
             _LOGGER.info("IR-Trigger configuration loaded successfully")
@@ -104,11 +105,11 @@ class IRTriggerData:
             
         except Exception as e:
             _LOGGER.error("Error loading %s: %s", config_path, e)
+            import traceback
+            _LOGGER.error(traceback.format_exc())
 
     def _process_devices(self, devices_raw):
         processed_devices = {}
-        
-        # Dictionary directories
         user_remotes_dir = Path(self.hass.config.config_dir) / "ir_trigger_remotes"
         official_remotes_dir = Path(__file__).parent / "remotes"
 
@@ -117,29 +118,20 @@ class IRTriggerData:
             final_device_info = {}
             
             if template_name:
-                # Recursive Search for template_name.yaml
                 template_file = None
                 search_filename = f"{template_name}.yaml"
-                
-                # Search Order: 1. User, 2. Official
                 for search_dir in [user_remotes_dir, official_remotes_dir]:
                     if search_dir.exists():
                         found = list(search_dir.rglob(search_filename))
                         if found:
                             template_file = found[0]
                             break
-                
                 if template_file:
                     try:
-                        template_data = load_yaml(str(template_file))
-                        final_device_info = template_data
-                        _LOGGER.debug("Loaded template %s for device %s", template_file, device_id)
+                        final_device_info = load_yaml(str(template_file))
                     except Exception as e:
                         _LOGGER.error("Error loading template %s: %s", template_file, e)
-                else:
-                    _LOGGER.warning("Template %s not found for device %s", template_name, device_id)
-
-            # Deep Merge overrides from IR-Trigger.yaml
+            
             deep_merge(final_device_info, device_info)
             processed_devices[device_id] = final_device_info
             
@@ -153,71 +145,86 @@ class IRTriggerData:
                 self.transmitters[tx_id] = LocalUSBTransmitter(tx_info.get(CONF_INDEX, 0))
             elif tx_type == "esphome":
                 self.transmitters[tx_id] = ESPHomeTransmitter(self.hass, tx_info.get(CONF_ENTITY_ID))
-            elif tx_type == "webhook":
-                self.transmitters[tx_id] = WebhookTransmitter(tx_info.get("url"))
             else:
-                _LOGGER.warning("Unknown transmitter type %s for %s, using mock", tx_type, tx_id)
                 self.transmitters[tx_id] = MockTransmitter()
 
     def _build_reverse_dictionary(self):
-        # Build dictionary for RX lookup: code -> {device, button, device_id}
         self.dictionary = {}
         for device_id, device_info in self.devices.items():
             name = device_info.get(CONF_NAME, device_id)
             for button_name, code in device_info.get(CONF_BUTTONS, {}).items():
-                self.dictionary[code] = {
-                    "device": name,
-                    "button": button_name,
-                    "device_id": device_id
-                }
+                self.dictionary[code] = {"device": name, "button": button_name, "device_id": device_id}
 
-    def _setup_modes(self, modes_config):
-        self.modes_map = {}
-        self.repeat_map = {}
-        for mode_name, mode_info in modes_config.items():
-            mapping = {}
+    def _setup_routing(self, config):
+        # 1. Global Setup
+        global_config = config.get(CONF_GLOBAL, {})
+        self.global_repeat = global_config.get(CONF_REPEAT, [])
+        self.global_remap = self._parse_remap(global_config.get(CONF_REMAP, {}))
+
+        # 2. State Machines Setup
+        self.state_machines = []
+        sm_configs = config.get(CONF_STATE_MACHINES, [])
+        for sm_config in sm_configs:
+            mode_entity = sm_config.get(CONF_MODE_ENTITY)
+            modes_raw = sm_config.get(CONF_MODES, {})
+            modes_map = {}
+            for mode_name, mode_info in modes_raw.items():
+                # Priority: Remap then Bind
+                mapping = self._parse_remap(mode_info.get(CONF_REMAP, {}))
+                bind_mapping = self._parse_bind(mode_info.get(CONF_BIND, []))
+                # Merge bind into mapping, but keep existing remaps (priority)
+                for code, action in bind_mapping.items():
+                    if code not in mapping:
+                        mapping[code] = action
+                modes_map[mode_name] = mapping
             
-            # Handle repeat
-            self.repeat_map[mode_name] = mode_info.get(CONF_REPEAT, [])
+            self.state_machines.append({
+                "mode_entity": mode_entity,
+                "modes_map": modes_map
+            })
+
+    def _parse_remap(self, remap_config):
+        mapping = {}
+        for source_code, actions in remap_config.items():
+            if not isinstance(actions, list):
+                actions = [actions]
             
-            # Handle bind (automatic mapping by key name)
-            bind_list = mode_info.get(CONF_BIND, [])
-            if isinstance(bind_list, dict): # Handle single dict or list
-                bind_list = [bind_list]
-                
-            for bind_item in bind_list:
-                source_id = bind_item.get(CONF_SOURCE)
-                target_id = bind_item.get(CONF_TARGET)
-                
-                source_dev = self.devices.get(source_id)
-                target_dev = self.devices.get(target_id)
-                
-                if source_dev and target_dev:
-                    source_keys = source_dev.get(CONF_BUTTONS, {})
-                    target_keys = target_dev.get(CONF_BUTTONS, {})
-                    
-                    for key_name, source_code in source_keys.items():
-                        if key_name in target_keys:
-                            target_code = target_keys[key_name]
-                            target_tx_id = target_dev.get(CONF_TRANSMITTER)
-                            mapping[source_code] = {
-                                "type": "transmit",
-                                "code": target_code,
-                                "transmitter": target_tx_id,
+            processed_actions = []
+            for act in actions:
+                if CONF_SERVICE in act:
+                    processed_actions.append({"type": "service", "action": act})
+                elif "code" in act:
+                    processed_actions.append({"type": "transmit", "action": act})
+            
+            if processed_actions:
+                mapping[source_code] = processed_actions
+        return mapping
+
+    def _parse_bind(self, bind_list):
+        if isinstance(bind_list, dict):
+            bind_list = [bind_list]
+        
+        mapping = {}
+        for bind_item in bind_list:
+            source_id = bind_item.get(CONF_SOURCE)
+            target_id = bind_item.get(CONF_TARGET)
+            source_dev = self.devices.get(source_id)
+            target_dev = self.devices.get(target_id)
+            
+            if source_dev and target_dev:
+                source_keys = source_dev.get(CONF_BUTTONS, {})
+                target_keys = target_dev.get(CONF_BUTTONS, {})
+                for key_name, source_code in source_keys.items():
+                    if key_name in target_keys:
+                        mapping[source_code] = [{
+                            "type": "transmit",
+                            "action": {
+                                "code": target_keys[key_name],
+                                "transmitter": target_dev.get(CONF_TRANSMITTER),
                                 "force_aeha_tx": target_dev.get(CONF_FORCE_AEHA_TX, False)
                             }
-            
-            # Handle remap (manual mapping)
-            for source_code, actions in mode_info.get(CONF_REMAP, {}).items():
-                if not isinstance(actions, list):
-                    actions = [actions]
-                
-                mapping[source_code] = {
-                    "type": "action",
-                    "actions": actions
-                }
-                
-            self.modes_map[mode_name] = mapping
+                        }]
+        return mapping
 
     def get_info(self, code: str):
         info = self.dictionary.get(code, {})
@@ -228,10 +235,7 @@ class IRTriggerData:
         }
 
     async def async_register_devices(self, entry):
-        """Register transmitters and target devices in HA device registry."""
         dev_reg = dr.async_get(self.hass)
-        
-        # Register Transmitters
         for tx_id, tx_info in self.transmitters_config.items():
             dev_reg.async_get_or_create(
                 config_entry_id=entry.entry_id,
@@ -240,149 +244,105 @@ class IRTriggerData:
                 manufacturer="IR-Trigger",
                 model="IR-Transmitter Hub",
             )
-        
-        # Target devices are registered by button.py using via_device
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the IR-Trigger component."""
-    
     ir_data = IRTriggerData(hass)
     await hass.async_add_executor_job(ir_data.load_config)
     hass.data[DOMAIN] = ir_data
 
-    # Setup Reload Service
     async def handle_reload(call: ServiceCall):
-        """Handle reload service call."""
         _LOGGER.info("Reloading IR configuration...")
         await hass.async_add_executor_job(ir_data.load_config)
-    
     hass.services.async_register(DOMAIN, SERVICE_RELOAD, handle_reload)
 
-    # Setup Webhook
     async def handle_webhook(hass: HomeAssistant, webhook_id: str, request):
-        """Handle incoming webhook payload."""
         try:
             data = await request.json()
             receiver = data.get(CONF_RECEIVER)
             code = data.get(CONF_CODE)
-            
-            if not receiver or not code:
-                _LOGGER.error("Invalid webhook payload. Missing receiver or code.")
-                return
-
+            if not receiver or not code: return
             info = ir_data.get_info(code)
-            
-            event_data = {
-                ATTR_RECEIVER: receiver,
-                ATTR_CODE: code,
-                ATTR_DEVICE: info[ATTR_DEVICE],
-                ATTR_BUTTON: info[ATTR_BUTTON],
-            }
-            
+            event_data = {ATTR_RECEIVER: receiver, ATTR_CODE: code, ATTR_DEVICE: info[ATTR_DEVICE], ATTR_BUTTON: info[ATTR_BUTTON]}
             hass.bus.async_fire(EVENT_IR_RECEIVED, event_data)
-            
         except Exception as e:
             _LOGGER.error("Error processing webhook: %s", e)
 
-    webhook_register(
-        hass, DOMAIN, "IR Trigger Webhook", f"{DOMAIN}_webhook", handle_webhook
-    )
+    webhook_register(hass, DOMAIN, "IR Trigger Webhook", f"{DOMAIN}_webhook", handle_webhook)
 
-    # Setup Event Listener for Dynamic Routing & Auto-Repeater
     async def handle_ir_event(event: Event):
         receiver = event.data.get(ATTR_RECEIVER)
         code = event.data.get(ATTR_CODE)
-        
         if not receiver or not code: return
 
-        # 1. Update Sensors (Legacy/Status Monitoring)
         info = ir_data.get_info(code)
-        device_name = event.data.get(ATTR_DEVICE) or info[ATTR_DEVICE]
         device_id = info.get("device_id")
-        button = event.data.get(ATTR_BUTTON) or info[ATTR_BUTTON]
-
+        
         if receiver not in ir_data.known_receivers:
             ir_data.known_receivers.add(receiver)
             async_dispatcher_send(hass, SIGNAL_NEW_RECEIVER, receiver)
+        async_dispatcher_send(hass, SIGNAL_UPDATE_SENSOR, receiver, {ATTR_CODE: code, ATTR_DEVICE: info[ATTR_DEVICE], ATTR_BUTTON: info[ATTR_BUTTON]})
 
-        sensor_data = {ATTR_CODE: code, ATTR_DEVICE: device_name, ATTR_BUTTON: button}
-        async_dispatcher_send(hass, SIGNAL_UPDATE_SENSOR, receiver, sensor_data)
+        # --- New Routing Engine ---
 
-        # 2. Global "always" mode for repeating
-        modes_to_check = ["always"]
-        if ir_data.mode_entity:
-            current_mode_state = hass.states.get(ir_data.mode_entity)
-            if current_mode_state:
-                modes_to_check.append(current_mode_state.state)
+        # 1. Global Repeat (Independent)
+        if device_id and device_id in ir_data.global_repeat:
+            target_dev_info = ir_data.devices.get(device_id)
+            if target_dev_info:
+                tx_id = target_dev_info.get(CONF_TRANSMITTER)
+                transmitter = ir_data.transmitters.get(tx_id)
+                tx_config = ir_data.transmitters_config.get(tx_id, {})
+                if receiver not in tx_config.get(CONF_LOCAL_RECEIVERS, []) and transmitter:
+                    _LOGGER.info("Auto-Repeating IR code %s for %s", code, device_id)
+                    await transmitter.async_send(code, force_aeha_tx=target_dev_info.get(CONF_FORCE_AEHA_TX, False))
 
-        for mode_name in modes_to_check:
-            if mode_name not in ir_data.modes_map and mode_name not in ir_data.repeat_map:
-                continue
+        # 2. Global Remap (Exclusive)
+        if code in ir_data.global_remap:
+            _LOGGER.debug("Matched Global Remap for %s", code)
+            await execute_actions(hass, ir_data, ir_data.global_remap[code])
+            return # BREAK: Do not evaluate state machines
 
-            # 2.1. Auto-Repeater Logic
-            if device_id and device_id in ir_data.repeat_map.get(mode_name, []):
-                target_dev_info = ir_data.devices.get(device_id)
-                if target_dev_info:
-                    tx_id = target_dev_info.get(CONF_TRANSMITTER)
-                    transmitter = ir_data.transmitters.get(tx_id)
-                    tx_config = ir_data.transmitters_config.get(tx_id, {})
-                    local_receivers = tx_config.get(CONF_LOCAL_RECEIVERS, [])
-                    
-                    if receiver in local_receivers:
-                        _LOGGER.warning(
-                            "Loop Prevention: Dropped repeat for %s from local receiver %s on transmitter %s",
-                            device_id, receiver, tx_id
-                        )
-                    elif transmitter:
-                        _LOGGER.info("Auto-Repeating IR code %s for %s", code, device_id)
-                        force_aeha = target_dev_info.get(CONF_FORCE_AEHA_TX, False)
-                        await transmitter.async_send(code, force_aeha_tx=force_aeha)
+        # 3. State Machines (Independent Machines, Exclusive within Mode)
+        for sm in ir_data.state_machines:
+            mode_entity = sm["mode_entity"]
+            modes_map = sm["modes_map"]
+            
+            current_mode = "always"
+            if mode_entity:
+                state = hass.states.get(mode_entity)
+                if state:
+                    current_mode = state.state
+            
+            # Check current mode, fallback to "always" if needed? 
+            # Actually user wants "always" handled via global block now, but some might want per-SM always.
+            # Let's support both current_mode and "always" within SM if they exist.
+            for m in [current_mode, "always"]:
+                if m in modes_map and code in modes_map[m]:
+                    _LOGGER.debug("Matched SM Mode %s for %s", m, code)
+                    await execute_actions(hass, ir_data, modes_map[m][code])
+                    break # Next State Machine
 
-            # 2.2. Dynamic Routing Logic (bind/remap)
-            mapping = ir_data.modes_map.get(mode_name, {})
-            if code in mapping:
-                action = mapping[code]
-                _LOGGER.debug("Routing IR code %s in mode %s: %s", code, mode_name, action)
-                
-                if action["type"] == "transmit":
-                    tx_id = action["transmitter"]
-                    transmitter = ir_data.transmitters.get(tx_id)
-                    if transmitter:
-                        await transmitter.async_send(
-                            action["code"], 
-                            force_aeha_tx=action.get("force_aeha_tx", False)
-                        )
-                
-                elif action["type"] == "action":
-                    for act_info in action["actions"]:
-                        domain, service = act_info[CONF_SERVICE].split(".")
-                        await hass.services.async_call(
-                            domain, service, act_info.get(CONF_DATA, {}), 
-                            target=act_info.get("target"),
-                            blocking=False
-                        )
+    async def execute_actions(hass, ir_data, actions):
+        for act_info in actions:
+            if act_info["type"] == "service":
+                act = act_info["action"]
+                domain, service = act[CONF_SERVICE].split(".")
+                await hass.services.async_call(domain, service, act.get(CONF_DATA, {}), target=act.get("target"), blocking=False)
+            elif act_info["type"] == "transmit":
+                act = act_info["action"]
+                tx_id = act.get("transmitter")
+                transmitter = ir_data.transmitters.get(tx_id)
+                if transmitter:
+                    await transmitter.async_send(act["code"], force_aeha_tx=act.get("force_aeha_tx", False))
 
     hass.bus.async_listen(EVENT_IR_RECEIVED, handle_ir_event)
-
-    hass.async_create_task(
-        hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": "import"}, data={}
-        )
-    )
-
+    hass.async_create_task(hass.config_entries.flow.async_init(DOMAIN, context={"source": "import"}, data={}))
     return True
 
 async def async_setup_entry(hass, entry):
-    """Set up IR-Trigger from a config entry."""
     ir_data = hass.data[DOMAIN]
     await ir_data.async_register_devices(entry)
-    await hass.config_entries.async_forward_entry_setups(
-        entry, ["sensor", "button", "light", "switch", "media_player"]
-    )
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor", "button", "light", "switch", "media_player"])
     return True
 
 async def async_unload_entry(hass, entry):
-    """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(
-        entry, ["sensor", "button", "light", "switch", "media_player"]
-    )
+    return await hass.config_entries.async_unload_platforms(entry, ["sensor", "button", "light", "switch", "media_player"])

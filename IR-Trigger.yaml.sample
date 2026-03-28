@@ -1,5 +1,4 @@
 # IR-Trigger.yaml
-mode_entity: input_select.ir_remote_mode
 
 transmitters:
   tx_study_ad00020p:
@@ -42,19 +41,27 @@ devices:
     transmitter: "tx_living_atom"
     template: "IR-A04HS"
 
-modes:
-  always:
-    repeat:
-      - TV_Study
-      - Recorder_Study
-      - HDMI_Study
-      - Light_Living
-  TV:
-    bind:
-      - source: C_RT1
-        target: TV_Study
-    remap:
-      "NEC_56A939C6":
-        - service: input_select.select_option
-          target: { entity_id: input_select.ir_remote_mode }
-          data: { option: "Recorder" }
+global:
+  repeat:
+    - TV_Study
+    - Recorder_Study
+    - HDMI_Study
+    - Light_Living
+  remap:
+    "NEC_56A939C6":
+      - service: input_select.select_option
+        target: { entity_id: input_select.ir_remote_mode }
+        data: { option: "Recorder" }
+
+state_machines:
+  - name: "Study AV"
+    mode_entity: input_select.ir_remote_mode
+    modes:
+      TV:
+        bind:
+          - source: C_RT1
+            target: TV_Study
+      Recorder:
+        bind:
+          - source: C_RT1
+            target: Recorder_Study
