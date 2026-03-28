@@ -5,6 +5,8 @@ mapping:
   play: "PLAY"
   pause: "PAUSE"
   stop: "STOP"
+  next_track: "NEXT_SKIP"
+  previous_track: "PREV_SKIP"
 buttons:
   POWER: NEC_86FF00FF
   SCREEN_DISP: NEC_86FF03FC
