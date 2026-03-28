@@ -1,67 +1,111 @@
 # 受信機セットアップガイド (Receivers Setup)
 
-IR-Trigger はエッジ側での信号受信を前提としています。以下のいずれかの方法でセットアップしてください。
+IR-Trigger はエッジデバイス（受信機）側で信号を受信し、Home Assistant へ通知する仕組みです。以下のいずれかの方法でセットアップしてください。
 
 ---
 
-## 1. Webhook 経由 (Bit Trade One AD00020P 等)
+## 1. Webhook 経由 (推奨)
 
-Linux デーモンやアドオン経由で Webhook を飛ばす方式です。
+Linux デーモンやマイコンから Webhook を飛ばす方式です。特別な設定なしで即座に連動可能です。
 
-### Webhook URL
+### Webhook エンドポイント
 `http://<HA_IP>:8123/api/webhook/ir_trigger_webhook`
 
 ### ペイロード形式 (JSON)
 ```json
 {
-  "receiver": "rx_study_ad00020p",
-  "code": "NEC_56A912ED"
+  "receiver": "living_room",
+  "code": "NEC_80EA12ED"
 }
 ```
+- `receiver`: `IR-Trigger.yaml` で定義した `local_receivers` と一致させる必要があります（ループ防止のため）。
+- `code`: `送信プロトコル_コード内容` の形式。
 
 ---
 
-## 2. ESPHome 経由 (M5StickS3 / M5Atom 等)
+## 2. Linux + AD00020P (`ir_daemon.py`)
 
-ESPHome の `remote_receiver` を使用し、HA内蔵のイベントバスに直接 `ir_trigger_received` を流す方式です。詳細は `edge_scripts/m5stick_s3_ir.yaml` を参照してください。
+Bit Trade One 社の AD00020P を Linux マシン（Raspberry Pi等）に接続して使用する場合のセットアップ手順です。
 
----
+### 2.1. 事前準備 (venv の使用推奨)
+最新の OS ではシステム Python への直接インストールが制限されているため、仮想環境を使用します。
 
-## 3. Python デーモン (`ir_daemon.py`)
-
-Linux マシンに直接 AD00020P を接続して使用する場合のスクリプトです。
-
-### 必要パッケージ (Prerequisites)
-最新の Linux (Debian 12/Raspberry Pi OS) では、システム全体の Python 環境を直接変更することが制限されています。そのため、**仮想環境 (venv)** の使用を強く推奨します。
-
-#### 推奨: 仮想環境 (venv) を使用する
 ```bash
 # 必要パッケージのインストール
 sudo apt update
 sudo apt install libusb-1.0-0-dev python3-venv python3-pip
 
-# 仮想環境の作成と有効化
+# プロジェクトディレクトリへ移動
 cd edge_scripts
+
+# 仮想環境の作成と有効化
 python3 -m venv venv
 source venv/bin/activate
 
-# 仮想環境内でのライブラリインストール
+# 依存ライブラリのインストール
 pip install pyusb requests aiohttp
 ```
 
-#### 手軽な方法: --break-system-packages を使用する
-OS の警告を無視して直接インストールする場合（自己責任）：
+### 2.2. デーモンの実行
 ```bash
-pip3 install pyusb requests aiohttp --break-system-packages
+python3 ir_daemon.py \
+  --url http://<HA_IP>:8123/api/webhook/ir_trigger_webhook \
+  --receiver living_room
 ```
 
 ---
 
-1. `edge_scripts/ir_daemon.py` を任意の場所に配置。
-2. 以下の引数で実行：
-   - `--url`: Webhook URL
-   - `--receiver`: 受信機名
+## 3. ESPHome 経由 (M5Stick / M5Atom 等)
 
-```bash
-python3 ir_daemon.py --url http://192.168.1.100:8123/api/webhook/ir_trigger_webhook --receiver living_room
+ESPHome デバイスを使用する場合、`remote_receiver` で取得した信号を直接 Home Assistant イベントとして発行します。
+
+### 設定例 (`esphome.yaml`)
+```yaml
+remote_receiver:
+  pin: 
+    number: GPIO35
+    inverted: true
+  dump: all
+
+# 受信時に HA イベントを発行
+on_ir_receive:
+  then:
+    - homeassistant.event:
+        event: ir_trigger_received
+        data:
+          receiver: "study_room"
+          code: !lambda 'return x.protocol + "_" + x.code;'
 ```
+※ 詳細は `edge_scripts/m5stick_s3_ir.yaml` (もしあれば) を参照してください。
+
+---
+
+## 4. 安定運用のための systemd 設定
+
+Linux でデーモンをバックグラウンド実行し、自動起動させるための設定例です。
+
+`ir-daemon.service` を `/etc/systemd/system/` に作成：
+```ini
+[Unit]
+Description=IR-Trigger Receiver Daemon
+After=network.target
+
+[Service]
+ExecStart=/path/to/edge_scripts/venv/bin/python /path/to/edge_scripts/ir_daemon.py --url ... --receiver ...
+WorkingDirectory=/path/to/edge_scripts
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+```
+
+作成後、以下のコマンドで有効化します：
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ir-daemon
+sudo systemctl start ir-daemon
+```
+

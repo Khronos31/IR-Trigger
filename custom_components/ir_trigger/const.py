@@ -29,6 +29,7 @@ CONF_REPEAT = "repeat"
 CONF_FORCE_AEHA_TX = "force_aeha_tx"
 CONF_DOMAIN = "domain"
 CONF_MAPPING = "mapping"
+CONF_TEMPLATE = "template"
 
 ATTR_RECEIVER = "receiver"
 ATTR_DEVICE = "device"

@@ -1,3 +1,4 @@
 scripts/generate_yaml.py
 __pycache__/
 *.pyc
+.aider*

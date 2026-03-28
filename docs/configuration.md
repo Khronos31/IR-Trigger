@@ -4,58 +4,94 @@
 
 ---
 
-## 1. 送信機 (`transmitters`)
+## 1. 全体設定
 
-送信機（ハブとなるデバイス）を定義します。
+| キー | 型 | 内容 |
+| :--- | :--- | :--- |
+| `mode_entity` | string | (任意) モード判定に使用する HA エンティティ ID (例: `input_select.house_mode`) |
+
+---
+
+## 2. 送信機 (`transmitters`)
+
+物理的な赤外線送信デバイス（ハブ）を定義します。
 
 | キー | 型 | 内容 |
 | :--- | :--- | :--- |
 | `name` | string | Home Assistant 上での表示名 |
-| `type` | string | `local_usb`, `esphome`, `webhook` |
-| `index` | int | USB デバイスのインデックス（0から開始） |
-| `entity_id` | string | ESPHome 送信機の場合のリモートエンティティID |
-| `url` | string | Webhook 送信機の場合の送信先URL |
-| `local_receivers` | list | この送信機の近くにある受信機のリスト（ループ防止用） |
+| `type` | string | `local_usb` (AD00020P等), `esphome` |
+| `index` | int | (`type: local_usb` 時) USB デバイスのインデックス（通常は 0） |
+| `entity_id` | string | (`type: esphome` 時) ESPHome の `remote_transmitter` エンティティ ID |
+| `local_receivers` | list | この送信機の信号を直接拾ってしまう受信機の名前。無限ループ防止に使用します。 |
 
 ---
 
-## 2. デバイス (`devices`)
+## 3. 家電デバイス (`devices`)
 
 操作対象となる家電（スポーク）を定義します。
 
 | キー | 型 | 内容 |
 | :--- | :--- | :--- |
 | `name` | string | Home Assistant 上での表示名 |
-| `transmitter` | string | 使用する送信機の ID（`transmitters` で定義したもの） |
+| `transmitter` | string | 使用する送信機の ID（`transmitters` セクションのキー） |
+| `force_aeha_tx` | bool | (任意) 送信時に NEC フォーマットを AEHA に変換するかどうか (デフォルト: `false`) |
 | `buttons` | dict | ボタン名と赤外線コードのマップ |
 
-**ボタン名の命名規則:** `NEC_56A912ED` のように、`プロトコル_コード` 形式で記述します。
+**赤外線コードの形式:** `プロトコル_コード` (例: `NEC_80EA12ED`, `AEHA_XXXX`)
 
 ---
 
-## 3. モードとルーティング (`modes`)
+## 4. モードとルーティング (`modes`)
 
-状況に応じた動的な動作を定義します。
+状況（`mode_entity` の状態）に応じた動的な動作を定義します。
+
+### `always` モード
+常に有効な特別なモードです。
 
 ### `repeat` (自動リピーター)
-指定したデバイスのボタンが押された（＝受信機が検知した）際、自動的にそのデバイスに紐付けられた送信機から同じ信号を再送します。
+指定したデバイスの信号を受信した際、同じ信号を自動的に再送します。
 ```yaml
 modes:
   always:
-    repeat: ["TV_Living", "AC_Office"]
+    repeat: ["tv_living"]
 ```
 
 ### `bind` (動的バインディング)
-特定のリモコン（ソース）の入力を、別の家電（ターゲット）の操作へ動的に振り向けます。
+ソース（リモコン等）の各ボタンを、対象デバイスの同じボタン名へ一括で紐付けます。
 ```yaml
 modes:
-  Movie:
+  Theater:
     bind:
-      source: Master_Remote
-      target: Projector_Screen
+      - source: general_remote
+        target: projector
+```
+
+### `remap` (詳細リマッピング)
+特定のコードを受信した際に、別の赤外線コードを送信したり、HA サービスを呼び出したりします。
+
+**赤外線送信の例:**
+```yaml
+modes:
+  always:
+    remap:
+      NEC_12345678: 
+        transmitter: tx_main
+        code: NEC_ABCDEF00
+```
+
+**HA サービス呼び出しの例:**
+```yaml
+modes:
+  always:
+    remap:
+      NEC_88888888:
+        service: light.toggle
+        target:
+          entity_id: light.living_room
 ```
 
 ---
 
-## 4. サービス再読み込み
-設定を変更した後は、HAのサービス `ir_trigger.reload` を実行してください。
+## 5. 設定の反映
+`IR-Trigger.yaml` を編集した後は、Home Assistant のサービス `ir_trigger.reload` を実行することで、再起動なしで設定を即座に反映できます。
+

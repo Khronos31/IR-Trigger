@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 from homeassistant.core import HomeAssistant, ServiceCall, Event
 from homeassistant.helpers.typing import ConfigType
@@ -35,6 +36,9 @@ from .const import (
     CONF_LOCAL_RECEIVERS,
     CONF_REPEAT,
     CONF_FORCE_AEHA_TX,
+    CONF_DOMAIN,
+    CONF_MAPPING,
+    CONF_TEMPLATE,
     ATTR_RECEIVER,
     ATTR_DEVICE,
     ATTR_BUTTON,
@@ -49,6 +53,15 @@ _LOGGER = logging.getLogger(__name__)
 
 # Integration configuration schema
 CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
+
+def deep_merge(base, overrides):
+    """Deep merge two dictionaries."""
+    for key, value in overrides.items():
+        if isinstance(value, dict) and key in base and isinstance(base[key], dict):
+            deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
 
 class IRTriggerData:
     def __init__(self, hass: HomeAssistant):
@@ -78,7 +91,8 @@ class IRTriggerData:
             self._setup_transmitters(self.transmitters_config)
             
             # 2. Setup Devices & Reverse Dictionary for RX
-            self.devices = config.get(CONF_DEVICES, {})
+            devices_raw = config.get(CONF_DEVICES, {})
+            self.devices = self._process_devices(devices_raw)
             self._build_reverse_dictionary()
             
             # 3. Setup Modes (Binding, Remapping, Repeating)
@@ -90,6 +104,46 @@ class IRTriggerData:
             
         except Exception as e:
             _LOGGER.error("Error loading %s: %s", config_path, e)
+
+    def _process_devices(self, devices_raw):
+        processed_devices = {}
+        
+        # Dictionary directories
+        user_remotes_dir = Path(self.hass.config.config_dir) / "ir_trigger_remotes"
+        official_remotes_dir = Path(__file__).parent / "remotes"
+
+        for device_id, device_info in devices_raw.items():
+            template_name = device_info.get(CONF_TEMPLATE)
+            final_device_info = {}
+            
+            if template_name:
+                # Recursive Search for template_name.yaml
+                template_file = None
+                search_filename = f"{template_name}.yaml"
+                
+                # Search Order: 1. User, 2. Official
+                for search_dir in [user_remotes_dir, official_remotes_dir]:
+                    if search_dir.exists():
+                        found = list(search_dir.rglob(search_filename))
+                        if found:
+                            template_file = found[0]
+                            break
+                
+                if template_file:
+                    try:
+                        template_data = load_yaml(str(template_file))
+                        final_device_info = template_data
+                        _LOGGER.debug("Loaded template %s for device %s", template_file, device_id)
+                    except Exception as e:
+                        _LOGGER.error("Error loading template %s: %s", template_file, e)
+                else:
+                    _LOGGER.warning("Template %s not found for device %s", template_name, device_id)
+
+            # Deep Merge overrides from IR-Trigger.yaml
+            deep_merge(final_device_info, device_info)
+            processed_devices[device_id] = final_device_info
+            
+        return processed_devices
 
     def _setup_transmitters(self, tx_config):
         self.transmitters = {}
