@@ -34,14 +34,29 @@
 | :--- | :--- | :--- |
 | `name` | string | Home Assistant 上での表示名 |
 | `transmitter` | string | 使用する送信機の ID（`transmitters` セクションのキー） |
-| `force_aeha_tx` | bool | (任意) 送信時に NEC フォーマットを AEHA に変換するかどうか (デフォルト: `false`) |
-| `buttons` | dict | ボタン名と赤外線コードのマップ |
-
-**赤外線コードの形式:** `プロトコル_コード` (例: `NEC_80EA12ED`, `AEHA_XXXX`)
+| `template` | string | 使用するリモコン辞書名（型番など） |
+| `domain` | string | (任意) `light`, `media_player`, `switch`, `climate`, `fan` |
+| `mapping` | dict | (任意) ドメイン標準機能とボタン名のマップ |
+| `force_aeha_tx` | bool | (任意) 送信時に NEC フォーマットを AEHA に変換するかどうか |
+| `buttons` | dict | (任意) ボタン名と赤外線コードのマップ（template を上書き） |
 
 ---
 
-## 4. モードとルーティング (`modes`)
+## 4. 辞書エコシステム (Templates)
+
+共通のリモコン定義を外部ファイル化して管理できます。
+
+### 検索パス
+以下の順序で `.yaml` ファイルを再帰的に検索し、最初に見つかったものを採用します。
+1. `config/ir_trigger_remotes/`
+2. `custom_components/ir_trigger/remotes/`
+
+### 辞書のディープマージ
+`template` で読み込まれた定義に対し、`IR-Trigger.yaml` 側の記述が優先的に上書き・結合されます。
+
+---
+
+## 5. モードとルーティング (`modes`)
 
 状況（`mode_entity` の状態）に応じた動的な動作を定義します。
 
@@ -53,7 +68,7 @@
 ```yaml
 modes:
   always:
-    repeat: ["tv_living"]
+    repeat: ["TV_Study"]
 ```
 
 ### `bind` (動的バインディング)
@@ -69,29 +84,7 @@ modes:
 ### `remap` (詳細リマッピング)
 特定のコードを受信した際に、別の赤外線コードを送信したり、HA サービスを呼び出したりします。
 
-**赤外線送信の例:**
-```yaml
-modes:
-  always:
-    remap:
-      NEC_12345678: 
-        transmitter: tx_main
-        code: NEC_ABCDEF00
-```
-
-**HA サービス呼び出しの例:**
-```yaml
-modes:
-  always:
-    remap:
-      NEC_88888888:
-        service: light.toggle
-        target:
-          entity_id: light.living_room
-```
-
 ---
 
-## 5. 設定の反映
-`IR-Trigger.yaml` を編集した後は、Home Assistant のサービス `ir_trigger.reload` を実行することで、再起動なしで設定を即座に反映できます。
-
+## 6. 設定の反映
+`IR-Trigger.yaml` や辞書ファイルを編集した後は、Home Assistant のサービス `ir_trigger.reload` を実行することで、再起動なしで設定を即座に反映できます。
