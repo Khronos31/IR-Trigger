@@ -5,7 +5,6 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     DOMAIN,
-    ATTR_VIA_DEVICE,
     SIGNAL_LOAD_COMPLETE,
     CONF_NAME,
     CONF_TRANSMITTER,
@@ -14,6 +13,7 @@ from .const import (
     CONF_DOMAIN,
     CONF_MAPPING,
 )
+from .entity import IRTriggerEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,43 +54,19 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     else:
         async_dispatcher_connect(hass, SIGNAL_LOAD_COMPLETE, async_setup_switches)
 
-class IRTriggerSwitch(SwitchEntity):
+class IRTriggerSwitch(IRTriggerEntity, SwitchEntity):
     """Representation of an IR Trigger Switch."""
 
-    def __init__(self, hass, device_id, device_name, transmitter, transmitter_id, buttons, mapping, force_aeha_tx):
+    def __init__(self, *args, **kwargs):
         """Initialize the switch."""
-        self.hass = hass
-        self._device_id = device_id
-        self._device_name = device_name
-        self._transmitter = transmitter
-        self._transmitter_id = transmitter_id
-        self._buttons = buttons
-        self._mapping = mapping
-        self._force_aeha_tx = force_aeha_tx
-        
+        super().__init__(*args, **kwargs)
         self._is_on = False
-        self._attr_name = device_name
-        self._attr_unique_id = f"ir_trigger_switch_{device_id}"
+        self._attr_unique_id = f"ir_trigger_switch_{self._device_id}"
 
     @property
     def is_on(self) -> bool:
         """Return true if switch is on."""
         return self._is_on
-
-    async def _async_send_mapped_button(self, mapping_key):
-        """Send IR code for the mapped button."""
-        button_key = self._mapping.get(mapping_key)
-        if not button_key:
-            _LOGGER.debug("No mapping for %s on device %s", mapping_key, self._device_id)
-            return False
-            
-        ir_code = self._buttons.get(button_key)
-        if not ir_code:
-            _LOGGER.warning("Button key %s not found in buttons for device %s", button_key, self._device_id)
-            return False
-            
-        await self._transmitter.async_send(ir_code, force_aeha_tx=self._force_aeha_tx)
-        return True
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
@@ -103,14 +79,3 @@ class IRTriggerSwitch(SwitchEntity):
         if await self._async_send_mapped_button("turn_off"):
             self._is_on = False
             self.async_write_ha_state()
-
-    @property
-    def device_info(self):
-        """Return device information."""
-        return {
-            "identifiers": {(DOMAIN, self._device_id)},
-            "name": self._device_name,
-            "manufacturer": "IR-Trigger",
-            "model": "Target Device (Switch)",
-            ATTR_VIA_DEVICE: (DOMAIN, self._transmitter_id),
-        }

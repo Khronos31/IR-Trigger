@@ -12,7 +12,6 @@ from .const import (
     CONF_BUTTONS,
     CONF_FORCE_AEHA_TX,
 )
-from .transmitter import LocalUSBTransmitter
 
 _LOGGER = logging.getLogger(__name__)
 
