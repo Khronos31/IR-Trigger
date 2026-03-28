@@ -65,15 +65,6 @@ devices:
     name: "リビングの照明"
     transmitter: tx_study_ad00020p
     template: "IR-A04HS"
-
-# 3. ルーティングとモード設定
-modes:
-  always:
-    repeat: ["TV_Study"]
-  TV:
-    bind:
-      - source: Master_Remote
-        target: TV_Study
 ```
 
 ---
@@ -84,6 +75,10 @@ modes:
 
 - **公式辞書:** `custom_components/ir_trigger/remotes/`
 - **ユーザー辞書:** `config/ir_trigger_remotes/`
+
+📚 対応リモコン一覧（公式辞書）はこちらで確認できます:  
+https://github.com/Khronos31/IR-Trigger/tree/main/custom_components/ir_trigger/remotes  
+※あなたのリモコンがない場合は、ぜひ `config/ir_trigger_remotes/` に自作のYAMLを配置し、GitHubへPull Requestを送ってコミュニティに貢献してください！
 
 ### 辞書ファイルの例 (`J-MX100RC.yaml`)
 ```yaml
