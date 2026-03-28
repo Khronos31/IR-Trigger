@@ -48,8 +48,8 @@
 
 ### 検索パス
 以下の順序で `.yaml` ファイルを再帰的に検索し、最初に見つかったものを採用します。
-1. `config/ir_trigger_remotes/`
-2. `custom_components/ir_trigger/remotes/`
+1. **ユーザー辞書 (Custom):** `config/ir_trigger_remotes/`
+2. **内蔵辞書 (Built-in):** `custom_components/ir_trigger/remotes/`
 
 ### 辞書のディープマージ
 `template` で読み込まれた定義に対し、`IR-Trigger.yaml` 側の記述が優先的に上書き・結合されます。
