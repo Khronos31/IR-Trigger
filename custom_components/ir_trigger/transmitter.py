@@ -23,7 +23,8 @@ class TXInterface(ABC):
         pass
 
 class USBad00020pTX(TXInterface):
-    def __init__(self, index: int = 0):
+    def __init__(self, hass, index: int = 0):
+        self.hass = hass
         self.index = index
         self._dev = None
         self._vid = 0x22ea
@@ -128,7 +129,7 @@ class MockTX(TXInterface):
 def create_transmitter(hass: HomeAssistant, config: dict) -> TXInterface:
     tx_type = config.get(CONF_TYPE)
     if tx_type == TX_TYPE_USB_AD00020P:
-        return USBad00020pTX(config.get(CONF_INDEX, 0))
+        return USBad00020pTX(hass, config.get(CONF_INDEX, 0))
     elif tx_type == TX_TYPE_ESPHOME:
         return ESPHomeTX(hass, config.get(CONF_ENTITY_ID))
     elif tx_type == TX_TYPE_WEBHOOK:
