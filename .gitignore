@@ -2,3 +2,5 @@ scripts/generate_yaml.py
 __pycache__/
 *.pyc
 .aider*
+lua-remote-hub/
+IR-Trigger.yaml
