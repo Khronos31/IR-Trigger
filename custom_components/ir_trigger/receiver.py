@@ -143,6 +143,12 @@ class USBad00020pRX(RXInterface):
                     # HAのメインイベントループに安全に処理を委譲
                     self.hass.loop.call_soon_threadsafe(self._handle_code, code)
 
+                    # Reset buffer after receiving
+                    reset_buf = bytearray([0xFF] * self._pkt_size)
+                    reset_buf[0], reset_buf[1] = 0x53, 0x01
+                    self._dev.write(self._endpoint_out, reset_buf, timeout=1000)
+                    self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+
             except usb.core.USBError as e:
                 if e.errno != 110: # 110 = timeout
                     _LOGGER.debug("USB RX Error (errno %s): %s", e.errno, e)

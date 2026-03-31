@@ -135,6 +135,8 @@ if __name__ == "__main__":
                 code = normalize_ir_data(data)
                 print(f"Received raw data -> Normalized: {code}")
                 send_to_homeassistant(args.url, code)
+                # Reset buffer after receiving
+                enter_receive_mode(dev)
             time.sleep(0.01)
     except KeyboardInterrupt:
         print("\nExiting...")
