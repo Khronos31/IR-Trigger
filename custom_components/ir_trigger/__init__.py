@@ -212,16 +212,14 @@ class IRTriggerData:
                 target_keys = target_dev.get(CONF_BUTTONS, {})
                 for key_name, source_code in source_keys.items():
                     if key_name in target_keys:
-                        mapping[source_code] = [(
-                            {
-                                "type": "transmit",
-                                "action": {
-                                    "code": target_keys[key_name],
-                                    "transmitter": target_dev.get(CONF_TRANSMITTER),
-                                    "force_aeha_tx": target_dev.get(CONF_FORCE_AEHA_TX, False)
-                                }
+                        mapping[source_code] = [{
+                            "type": "transmit",
+                            "action": {
+                                "code": target_keys[key_name],
+                                "transmitter": target_dev.get(CONF_TRANSMITTER),
+                                "force_aeha_tx": target_dev.get(CONF_FORCE_AEHA_TX, False)
                             }
-                        )]
+                        }]
         return mapping
 
     def get_info(self, code: str):

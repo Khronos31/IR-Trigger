@@ -3,6 +3,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
 from datetime import timedelta
+from aiohttp import web
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.components.webhook import async_register as webhook_register, async_unregister as webhook_unregister
@@ -107,10 +108,10 @@ class WebhookRX(RXInterface):
             code = data.get("code")
             if code:
                 self._handle_code(code)
-                return self.hass.http.Response(status=200, text="OK")
+                return web.Response(status=200, text="OK")
         except Exception as e:
             _LOGGER.error("Error processing webhook for %s: %s", self.receiver_id, e)
-        return self.hass.http.Response(status=400, text="Invalid Payload")
+        return web.Response(status=400, text="Invalid Payload")
 
 class NatureRemoRX(RXInterface):
     def __init__(self, hass, receiver_id, token, interval):
