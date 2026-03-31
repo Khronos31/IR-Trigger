@@ -282,12 +282,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             if target_dev_info:
                 tx_id = target_dev_info.get(CONF_TRANSMITTER)
                 tx = ir_data.transmitters.get(tx_id)
-                receiver_config = ir_data.receivers_config.get(receiver, {})
-                # Note: This is a placeholder for local receiver exclusion check
-                # For now just repeat if transmitter exists
-                if tx:
+                tx_config = ir_data.transmitters_config.get(tx_id, {})
+                local_receivers = tx_config.get(CONF_LOCAL_RECEIVERS, [])
+                
+                if tx and receiver not in local_receivers:
                     _LOGGER.info("Auto-Repeating IR code %s for %s", code, device_id)
                     await tx.async_send(code, force_aeha_tx=target_dev_info.get(CONF_FORCE_AEHA_TX, False))
+                elif tx:
+                    _LOGGER.debug("Skipping auto-repeat for %s: receiver %s is local to transmitter %s", device_id, receiver, tx_id)
 
         # 2. Global Remap
         if code in ir_data.global_remap:

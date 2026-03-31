@@ -5,6 +5,7 @@ transmitters:
     name: "Study Transmitter"
     type: usb_ad00020p
     index: 0
+    local_receivers: ["rx_study_usb"]
   tx_living:
     name: "Living Room Transmitter"
     type: esphome
