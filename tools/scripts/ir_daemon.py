@@ -87,54 +87,35 @@ def open_device():
         
     return dev
 
-def read_ir(dev):
-    # 1. RECEIVE_WAIT_MODE_WAIT (0x53, 0x01)
+def enter_receive_mode(dev):
+    """Enter RECEIVE_WAIT_MODE_WAIT (0x53, 0x01)"""
     out_buf = bytearray([0xFF] * PKT_SIZE)
     out_buf[0] = 0x53
     out_buf[1] = 0x01
-    
     try:
         dev.write(ENDPOINT_OUT, out_buf, timeout=1000)
         in_buf = dev.read(ENDPOINT_IN, PKT_SIZE, timeout=1000)
-        if in_buf[0] != 0x53:
-            return None
+        return in_buf[0] == 0x53
     except usb.core.USBError:
-        return None
-        
-    # 2. Loop until IR signal is received
-    received_data = None
-    while True:
-        out_buf = bytearray([0xFF] * PKT_SIZE)
-        out_buf[0] = 0x52
-        
-        try:
-            dev.write(ENDPOINT_OUT, out_buf, timeout=1000)
-            in_buf = dev.read(ENDPOINT_IN, PKT_SIZE, timeout=1000)
-            
-            if in_buf[0] == 0x52 and in_buf[1] != 0:
-                received_data = in_buf[1:]
-                break
-        except usb.core.USBError:
-            pass
-            
-        time.sleep(0.01)
-        
-    # 3. RECEIVE_WAIT_MODE_NONE (0x53, 0x00)
+        return False
+
+def pull_ir_data(dev):
+    """Poll for IR data using 0x52 command"""
     out_buf = bytearray([0xFF] * PKT_SIZE)
-    out_buf[0] = 0x53
-    out_buf[1] = 0x00
+    out_buf[0] = 0x52
     try:
         dev.write(ENDPOINT_OUT, out_buf, timeout=1000)
-        dev.read(ENDPOINT_IN, PKT_SIZE, timeout=1000)
+        in_buf = dev.read(ENDPOINT_IN, PKT_SIZE, timeout=1000)
+        if in_buf[0] == 0x52 and in_buf[1] != 0:
+            return in_buf[1:]
     except usb.core.USBError:
         pass
-        
-    return received_data
+    return None
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Linux daemon for AD00020P IR Receiver")
-    parser.add_argument("--url", required=True, help="HA Webhook URL with receiver ID (e.g. http://<HA_IP>:8123/api/webhook/rx_living_usb)")
+    parser.add_argument("--url", required=True, help="HA Webhook URL (e.g. http://<HA_IP>:8123/api/webhook/rx_study_usb)")
     args = parser.parse_args()
 
     print("Starting IR Daemon...")
@@ -142,14 +123,26 @@ if __name__ == "__main__":
     if not dev:
         sys.exit(1)
         
+    if not enter_receive_mode(dev):
+        print("Failed to enter receive mode.")
+        sys.exit(1)
+
     print("Device initialized. Waiting for IR signals...")
     try:
         while True:
-            data = read_ir(dev)
+            data = pull_ir_data(dev)
             if data:
                 code = normalize_ir_data(data)
                 print(f"Received raw data -> Normalized: {code}")
                 send_to_homeassistant(args.url, code)
+            time.sleep(0.01)
     except KeyboardInterrupt:
         print("\nExiting...")
+        # Exit receive mode (0x53, 0x00)
+        out_buf = bytearray([0xFF] * PKT_SIZE)
+        out_buf[0], out_buf[1] = 0x53, 0x00
+        try:
+            dev.write(ENDPOINT_OUT, out_buf, timeout=1000)
+        except:
+            pass
         usb.util.dispose_resources(dev)

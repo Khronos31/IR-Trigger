@@ -63,7 +63,7 @@ http_request:
 
 remote_receiver:
   pin: 
-    number: GPIO35
+    number: GPIO33
     inverted: true
   dump: all
   on_nec:
@@ -95,7 +95,7 @@ WorkingDirectory=/path/to/tools/scripts
 StandardOutput=inherit
 StandardError=inherit
 Restart=always
-User=pi
+User=root
 
 [Install]
 WantedBy=multi-user.target
