@@ -106,7 +106,8 @@ class IRTriggerData:
             self._setup_routing(config)
             
             self.loaded = True
-            _LOGGER.info("IR-Trigger V2 configuration loaded successfully")
+            _LOGGER.info("IR-Trigger V2 configuration loaded successfully. TX count: %d, RX count: %d, Device count: %d", 
+                         len(self.transmitters), len(self.receivers), len(self.devices))
             async_dispatcher_send(self.hass, SIGNAL_LOAD_COMPLETE)
             
         except Exception as e:
@@ -117,15 +118,18 @@ class IRTriggerData:
     async def _setup_transmitters(self, config):
         self.transmitters = {}
         for tx_id, tx_info in config.items():
+            _LOGGER.info("Creating transmitter: %s (type: %s)", tx_id, tx_info.get(CONF_TYPE))
             self.transmitters[tx_id] = create_transmitter(self.hass, tx_info)
 
     async def _setup_receivers(self, config):
         self.receivers = {}
         for rx_id, rx_info in config.items():
+            _LOGGER.info("Creating receiver: %s (type: %s)", rx_id, rx_info.get(CONF_TYPE))
             rx = create_receiver(self.hass, rx_id, rx_info)
             if rx:
                 await rx.async_setup()
                 self.receivers[rx_id] = rx
+                _LOGGER.info("Receiver %s setup complete", rx_id)
 
     async def _teardown_receivers(self):
         for rx in self.receivers.values():
@@ -252,6 +256,7 @@ class IRTriggerData:
             )
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    _LOGGER.info("Initializing IR-Trigger Integration")
     ir_data = IRTriggerData(hass)
     await ir_data.load_config()
     hass.data[DOMAIN] = ir_data
@@ -264,7 +269,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def handle_ir_event(event: Event):
         receiver = event.data.get(ATTR_RECEIVER)
         code = event.data.get(ATTR_CODE)
-        if not receiver or not code: return
+        if not receiver or not code: 
+            _LOGGER.debug("Incomplete IR event data: %s", event.data)
+            return
+
+        _LOGGER.info("IR Signal Received: Receiver=%s, Code=%s", receiver, code)
 
         info = ir_data.get_info(code)
         device_id = info.get("device_id")

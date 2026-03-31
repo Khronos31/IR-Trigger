@@ -57,6 +57,7 @@ class USBad00020pRX(RXInterface):
         self._endpoint_in = 0x83
 
     async def async_setup(self):
+        _LOGGER.info("Starting USB polling loop for receiver: %s (index: %d)", self.receiver_id, self.index)
         self._running = True
         asyncio.create_task(self._run_loop())
 
@@ -107,6 +108,7 @@ class WebhookRX(RXInterface):
             # Payload is now just {"code": "..."}
             code = data.get("code")
             if code:
+                _LOGGER.info("Webhook received for %s: %s", self.receiver_id, code)
                 self._handle_code(code)
                 return web.Response(status=200, text="OK")
         except Exception as e:

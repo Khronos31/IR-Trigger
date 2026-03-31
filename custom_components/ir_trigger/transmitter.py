@@ -74,8 +74,13 @@ class USBad00020pTX(TXInterface):
         packet[0], packet[1], packet[2], packet[3] = 0x61, fmt_type, bit_len & 0xFF, (bit_len >> 8) & 0xFF
         packet[4:4+len(byte_data)] = byte_data
         
-        async with self._lock:
-            await asyncio.to_thread(self._do_send, packet)
+        dev = await self.hass.async_add_executor_job(self._open_device)
+        if dev:
+            _LOGGER.info("Sending USB IR code: %s (index: %d, force_aeha: %s)", code, self.index, force_aeha_tx)
+            async with self._lock:
+                await asyncio.to_thread(self._do_send, packet)
+        else:
+            _LOGGER.error("USB device not found for index %d", self.index)
 
     def _do_send(self, packet):
         dev = self._open_device()
@@ -99,11 +104,14 @@ class WebhookTX(TXInterface):
     def __init__(self, hass, url):
         self.hass = hass
         self.url = url
+        
     async def async_send(self, code: str, force_aeha_tx: bool = False):
+        _LOGGER.info("Sending Webhook TX: %s -> %s", code, self.url)
         session = async_get_clientsession(self.hass)
         try:
             async with asyncio.timeout(10):
                 await session.post(self.url, json={"code": code})
+            _LOGGER.info("Webhook TX sent successfully")
         except Exception as e:
             _LOGGER.error("Error sending Webhook TX to %s: %s", self.url, e)
 
