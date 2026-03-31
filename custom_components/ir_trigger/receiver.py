@@ -132,34 +132,44 @@ class USBad00020pRX(RXInterface):
                     continue
 
             try:
-                # 読み取り要求 (0x52)
+                # 1. 待機モード開始 (Legacy方式: 毎回セット)
                 out_buf = bytearray([0xFF] * self._pkt_size)
-                out_buf[0] = 0x52
+                out_buf[0], out_buf[1] = 0x53, 0x01
                 self._dev.write(self._endpoint_out, out_buf, timeout=1000)
-                in_buf = self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+                self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
 
-                if in_buf[0] == 0x52 and in_buf[1] != 0:
-                    code = self._normalize_ir_data(in_buf[1:])
-                    # HAのメインイベントループに安全に処理を委譲
-                    self.hass.loop.call_soon_threadsafe(self._handle_code, code)
+                # 2. 読み取りループ
+                received_code = None
+                while self._running:
+                    out_buf = bytearray([0xFF] * self._pkt_size)
+                    out_buf[0] = 0x52
+                    self._dev.write(self._endpoint_out, out_buf, timeout=1000)
+                    in_buf = self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
 
-                    # Reset buffer after receiving
-                    reset_buf = bytearray([0xFF] * self._pkt_size)
-                    reset_buf[0], reset_buf[1] = 0x53, 0x01
-                    self._dev.write(self._endpoint_out, reset_buf, timeout=1000)
-                    self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+                    if in_buf[0] == 0x52 and in_buf[1] != 0:
+                        received_code = self._normalize_ir_data(in_buf[1:])
+                        break
+                    time.sleep(0.01)
+
+                if received_code:
+                    self.hass.loop.call_soon_threadsafe(self._handle_code, received_code)
+
+                # 3. 待機モード終了 (これでバッファを強制クリア)
+                out_buf[0], out_buf[1] = 0x53, 0x00
+                self._dev.write(self._endpoint_out, out_buf, timeout=1000)
+                self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
 
             except usb.core.USBError as e:
-                if e.errno != 110: # 110 = timeout
-                    _LOGGER.debug("USB RX Error (errno %s): %s", e.errno, e)
-                    self._dev = None
-                    time.sleep(1)
+                # エラー時は再接続
+                _LOGGER.debug("USB RX Error (reconnecting...): %s", e)
+                self._dev = None
+                time.sleep(1)
             except Exception as e:
-                _LOGGER.error("Unexpected USB RX Error on receiver %s: %s", self.receiver_id, e)
+                _LOGGER.error("Unexpected USB RX Error on %s: %s", self.receiver_id, e)
                 self._dev = None
                 time.sleep(1)
 
-            time.sleep(0.01)
+            time.sleep(0.1)
 
 class WebhookRX(RXInterface):
     def __init__(self, hass, receiver_id):
