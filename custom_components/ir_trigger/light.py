@@ -7,7 +7,7 @@ from .const import (
     DOMAIN,
     SIGNAL_LOAD_COMPLETE,
     CONF_NAME,
-    CONF_HUB,
+    CONF_TRANSMITTER,
     CONF_BUTTONS,
     CONF_FORCE_AEHA_TX,
     CONF_DOMAIN,
@@ -28,14 +28,14 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
             if device_info.get(CONF_DOMAIN) != "light":
                 continue
 
-            hub_id = device_info.get(CONF_HUB)
-            if not hub_id:
-                # Silently skip devices without a hub (e.g., remotes)
+            tx_id = device_info.get(CONF_TRANSMITTER)
+            if not tx_id:
+                # Silently skip devices without a transmitter (e.g., remotes)
                 continue
 
-            hub = ir_data.hubs.get(hub_id)
-            if not hub:
-                _LOGGER.warning("Hub %s not found for light %s", hub_id, device_id)
+            tx = ir_data.transmitters.get(tx_id)
+            if not tx:
+                _LOGGER.warning("Transmitter %s not found for light %s", tx_id, device_id)
                 continue
                 
             entities.append(
@@ -43,8 +43,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                     hass,
                     device_id,
                     device_info.get(CONF_NAME, device_id),
-                    hub,
-                    hub_id,
+                    tx,
+                    tx_id,
                     device_info.get(CONF_BUTTONS, {}),
                     device_info.get(CONF_MAPPING, {}),
                     device_info.get(CONF_FORCE_AEHA_TX, False)

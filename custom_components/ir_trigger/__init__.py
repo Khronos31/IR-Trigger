@@ -18,7 +18,8 @@ from .const import (
     CONF_RECEIVER,
     CONF_CODE,
     CONF_MODE_ENTITY,
-    CONF_HUBS,
+    CONF_TRANSMITTERS,
+    CONF_RECEIVERS,
     CONF_DEVICES,
     CONF_MODES,
     CONF_GLOBAL,
@@ -26,7 +27,7 @@ from .const import (
     CONF_TYPE,
     CONF_INDEX,
     CONF_ENTITY_ID,
-    CONF_HUB,
+    CONF_TRANSMITTER,
     CONF_BUTTONS,
     CONF_BIND,
     CONF_REMAP,
@@ -49,7 +50,8 @@ from .const import (
     SIGNAL_UPDATE_SENSOR,
     SIGNAL_LOAD_COMPLETE,
 )
-from .hub import IRHub
+from .transmitter import create_transmitter
+from .receiver import create_receiver
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,8 +69,10 @@ class IRTriggerData:
     def __init__(self, hass: HomeAssistant):
         self.hass = hass
         self.dictionary = {}
-        self.hubs_config = {}
-        self.hubs = {}
+        self.transmitters_config = {}
+        self.receivers_config = {}
+        self.transmitters = {}
+        self.receivers = {}
         self.devices = {}
         self.global_repeat = []
         self.global_remap = {}
@@ -84,10 +88,14 @@ class IRTriggerData:
         try:
             config = await self.hass.async_add_executor_job(load_yaml, config_path)
             
-            # 1. Setup Hubs
-            await self._teardown_hubs()
-            self.hubs_config = config.get(CONF_HUBS, {})
-            await self._setup_hubs(self.hubs_config)
+            # 1. Setup Transmitters & Receivers
+            await self._teardown_receivers()
+            
+            self.transmitters_config = config.get(CONF_TRANSMITTERS, {})
+            self.receivers_config = config.get(CONF_RECEIVERS, {})
+            
+            await self._setup_transmitters(self.transmitters_config)
+            await self._setup_receivers(self.receivers_config)
             
             # 2. Setup Devices & Reverse Dictionary
             devices_raw = config.get(CONF_DEVICES, {})
@@ -106,17 +114,23 @@ class IRTriggerData:
             import traceback
             _LOGGER.error(traceback.format_exc())
 
-    async def _setup_hubs(self, hubs_config):
-        self.hubs = {}
-        for hub_id, hub_info in hubs_config.items():
-            hub = IRHub(self.hass, hub_id, hub_info)
-            await hub.async_setup()
-            self.hubs[hub_id] = hub
+    async def _setup_transmitters(self, config):
+        self.transmitters = {}
+        for tx_id, tx_info in config.items():
+            self.transmitters[tx_id] = create_transmitter(self.hass, tx_info)
 
-    async def _teardown_hubs(self):
-        for hub in self.hubs.values():
-            await hub.async_teardown()
-        self.hubs = {}
+    async def _setup_receivers(self, config):
+        self.receivers = {}
+        for rx_id, rx_info in config.items():
+            rx = create_receiver(self.hass, rx_id, rx_info)
+            if rx:
+                await rx.async_setup()
+                self.receivers[rx_id] = rx
+
+    async def _teardown_receivers(self):
+        for rx in self.receivers.values():
+            await rx.async_teardown()
+        self.receivers = {}
 
     def _process_devices(self, devices_raw):
         processed_devices = {}
@@ -128,18 +142,21 @@ class IRTriggerData:
             final_device_info = {}
             if template_name:
                 template_file = None
-                search_filename = f"{template_name}.yaml"
+                # Direct file check (KISS principle)
                 for search_dir in [user_remotes_dir, official_remotes_dir]:
-                    if search_dir.exists():
-                        found = list(search_dir.rglob(search_filename))
-                        if found:
-                            template_file = found[0]
-                            break
+                    candidate = search_dir / f"{template_name}.yaml"
+                    if candidate.is_file():
+                        template_file = candidate
+                        break
+                
                 if template_file:
                     try:
                         final_device_info = load_yaml(str(template_file))
                     except Exception as e:
                         _LOGGER.error("Error loading template %s: %s", template_file, e)
+                else:
+                    _LOGGER.warning("Template %s not found in user or official remotes", template_name)
+                    
             deep_merge(final_device_info, device_info)
             processed_devices[device_id] = final_device_info
         return processed_devices
@@ -195,14 +212,16 @@ class IRTriggerData:
                 target_keys = target_dev.get(CONF_BUTTONS, {})
                 for key_name, source_code in source_keys.items():
                     if key_name in target_keys:
-                        mapping[source_code] = [{
-                            "type": "transmit",
-                            "action": {
-                                "code": target_keys[key_name],
-                                "hub": target_dev.get(CONF_HUB),
-                                "force_aeha_tx": target_dev.get(CONF_FORCE_AEHA_TX, False)
+                        mapping[source_code] = [(
+                            {
+                                "type": "transmit",
+                                "action": {
+                                    "code": target_keys[key_name],
+                                    "transmitter": target_dev.get(CONF_TRANSMITTER),
+                                    "force_aeha_tx": target_dev.get(CONF_FORCE_AEHA_TX, False)
+                                }
                             }
-                        }]
+                        )]
         return mapping
 
     def get_info(self, code: str):
@@ -215,13 +234,23 @@ class IRTriggerData:
 
     async def async_register_devices(self, entry):
         dev_reg = dr.async_get(self.hass)
-        for hub_id, hub_info in self.hubs_config.items():
+        # Register Transmitters
+        for tx_id, tx_info in self.transmitters_config.items():
             dev_reg.async_get_or_create(
                 config_entry_id=entry.entry_id,
-                identifiers={(DOMAIN, hub_id)},
-                name=hub_info.get(CONF_NAME, hub_id),
+                identifiers={(DOMAIN, f"tx_{tx_id}")},
+                name=tx_info.get(CONF_NAME, tx_id),
                 manufacturer="IR-Trigger",
-                model="IR-Hub",
+                model="IR-Transmitter",
+            )
+        # Register Receivers
+        for rx_id, rx_info in self.receivers_config.items():
+            dev_reg.async_get_or_create(
+                config_entry_id=entry.entry_id,
+                identifiers={(DOMAIN, f"rx_{rx_id}")},
+                name=rx_info.get(CONF_NAME, rx_id),
+                manufacturer="IR-Trigger",
+                model="IR-Receiver",
             )
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -251,12 +280,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         if device_id and device_id in ir_data.global_repeat:
             target_dev_info = ir_data.devices.get(device_id)
             if target_dev_info:
-                hub_id = target_dev_info.get(CONF_HUB)
-                hub = ir_data.hubs.get(hub_id)
-                hub_config = ir_data.hubs_config.get(hub_id, {})
-                if receiver not in hub_config.get(CONF_LOCAL_RECEIVERS, []) and hub:
+                tx_id = target_dev_info.get(CONF_TRANSMITTER)
+                tx = ir_data.transmitters.get(tx_id)
+                receiver_config = ir_data.receivers_config.get(receiver, {})
+                # Note: This is a placeholder for local receiver exclusion check
+                # For now just repeat if transmitter exists
+                if tx:
                     _LOGGER.info("Auto-Repeating IR code %s for %s", code, device_id)
-                    await hub.async_send(code, force_aeha_tx=target_dev_info.get(CONF_FORCE_AEHA_TX, False))
+                    await tx.async_send(code, force_aeha_tx=target_dev_info.get(CONF_FORCE_AEHA_TX, False))
 
         # 2. Global Remap
         if code in ir_data.global_remap:
@@ -284,10 +315,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 await hass.services.async_call(domain, service, act.get(CONF_DATA, {}), target=act.get("target"), blocking=False)
             elif act_info["type"] == "transmit":
                 act = act_info["action"]
-                hub_id = act.get("hub")
-                hub = ir_data.hubs.get(hub_id)
-                if hub:
-                    await hub.async_send(act["code"], force_aeha_tx=act.get("force_aeha_tx", False))
+                tx_id = act.get("transmitter")
+                tx = ir_data.transmitters.get(tx_id)
+                if tx:
+                    await tx.async_send(act["code"], force_aeha_tx=act.get("force_aeha_tx", False))
 
     hass.bus.async_listen(EVENT_IR_RECEIVED, handle_ir_event)
     hass.async_create_task(hass.config_entries.flow.async_init(DOMAIN, context={"source": "import"}, data={}))
@@ -300,7 +331,6 @@ async def async_setup_entry(hass, entry):
     return True
 
 async def async_unload_entry(hass, entry):
-    # Teardown hubs on unload?
-    # ir_data = hass.data[DOMAIN]
-    # await ir_data._teardown_hubs()
+    ir_data = hass.data[DOMAIN]
+    await ir_data._teardown_receivers()
     return await hass.config_entries.async_unload_platforms(entry, ["sensor", "button", "light", "switch", "media_player"])

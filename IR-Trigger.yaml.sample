@@ -1,56 +1,48 @@
-# IR-Trigger.yaml (V2 Architecture)
+# IR-Trigger.yaml (True V2 Architecture)
 
-hubs:
-  hub_study:
-    name: "スタディのHub"
-    tx:
-      type: local_usb
-      index: 1
-    rx:
-      type: local_usb
-      index: 1
-    local_receivers: [hub_study, hub_living]
+transmitters:
+  tx_study:
+    name: "Study Transmitter"
+    type: usb_ad00020p
+    index: 0
+  tx_living:
+    name: "Living Room Transmitter"
+    type: esphome
+    entity_id: remote.atom_s3_living
 
-  hub_living:
-    name: "リビングのHub"
-    tx:
-      type: esphome
-      entity_id: remote.atom_s3_living
-    rx:
-      type: webhook
-      webhook_id: "living_hub_rx_12345"
+receivers:
+  rx_study_usb:
+    name: "Study USB Receiver"
+    type: usb_ad00020p
+    index: 1
+  rx_living_esp:
+    name: "Living Room ESP Receiver"
+    type: webhook
 
 devices:
   C_RT1:
-    name: "C-RT1"
-    template: "C-RT1"
+    name: "Master Remote"
+    template: "media_player/C-RT1"
 
   TV_Study:
-    name: "スタディのテレビ"
-    hub: "hub_study"
-    template: "J-MX100RC"
+    name: "Study TV"
+    transmitter: "tx_study"
+    template: "media_player/J-MX100RC"
 
   Recorder_Study:
-    name: "スタディのレコーダー"
-    hub: "hub_study"
-    template: "RC-R2"
-
-  HDMI_Study:
-    name: "スタディのHDMI"
-    hub: "hub_study"
-    force_aeha_tx: true
-    template: "UGREEN-55857"
+    name: "Study Recorder"
+    transmitter: "tx_study"
+    template: "media_player/RC-R2"
 
   Light_Living:
-    name: "リビングのライト"
-    hub: "hub_living"
-    template: "IR-A04HS"
+    name: "Living Light"
+    transmitter: "tx_living"
+    template: "light/IR-A04HS"
 
 global:
   repeat:
     - TV_Study
     - Recorder_Study
-    - HDMI_Study
     - Light_Living
   remap:
     "NEC_56A939C6":
@@ -59,7 +51,7 @@ global:
         data: { option: "Recorder" }
 
 state_machines:
-  - name: "Study AV"
+  - name: "Study AV CONTROL"
     mode_entity: input_select.ir_remote_mode
     modes:
       TV:

@@ -52,12 +52,11 @@ def normalize_ir_data(data) -> str:
 
     return f"{prefix}{hex_payload}"
 
-def send_to_homeassistant(ha_url: str, receiver_name: str, code: str):
+def send_to_homeassistant(ha_url: str, code: str):
     """
     Send the normalized code to the Home Assistant Webhook.
     """
     payload = {
-        "receiver": receiver_name,
         "code": code
     }
     try:
@@ -135,8 +134,7 @@ def read_ir(dev):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Linux daemon for AD00020P IR Receiver")
-    parser.add_argument("--url", required=True, help="Home Assistant Webhook URL (e.g. http://192.168.1.10:8123/api/webhook/ir_trigger_webhook)")
-    parser.add_argument("--receiver", default="LivingRoom_AD00020P", help="Receiver device name")
+    parser.add_argument("--url", required=True, help="HA Webhook URL with receiver ID (e.g. http://<HA_IP>:8123/api/webhook/rx_living_usb)")
     args = parser.parse_args()
 
     print("Starting IR Daemon...")
@@ -151,7 +149,7 @@ if __name__ == "__main__":
             if data:
                 code = normalize_ir_data(data)
                 print(f"Received raw data -> Normalized: {code}")
-                send_to_homeassistant(args.url, args.receiver, code)
+                send_to_homeassistant(args.url, code)
     except KeyboardInterrupt:
         print("\nExiting...")
         usb.util.dispose_resources(dev)

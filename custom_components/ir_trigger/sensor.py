@@ -20,14 +20,13 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     ir_data = hass.data[DOMAIN]
     
     sensors = []
-    for hub_id, hub in ir_data.hubs.items():
-        if hub.rx:
-            _LOGGER.info("Adding sensors for RX Hub: %s", hub_id)
-            sensors.extend([
-                IRTriggerSensor(hub_id, ATTR_CODE, "Latest IR Signal", "mdi:remote"),
-                IRTriggerSensor(hub_id, ATTR_DEVICE, "Latest IR Device", "mdi:gamepad-variant"),
-                IRTriggerSensor(hub_id, ATTR_BUTTON, "Latest IR Button", "mdi:radiobox-marked"),
-            ])
+    for rx_id in ir_data.receivers.keys():
+        _LOGGER.info("Adding sensors for Receiver: %s", rx_id)
+        sensors.extend([
+            IRTriggerSensor(rx_id, ATTR_CODE, "Latest IR Signal", "mdi:remote"),
+            IRTriggerSensor(rx_id, ATTR_DEVICE, "Latest IR Device", "mdi:gamepad-variant"),
+            IRTriggerSensor(rx_id, ATTR_BUTTON, "Latest IR Button", "mdi:radiobox-marked"),
+        ])
     
     if sensors:
         async_add_entities(sensors)
@@ -57,12 +56,12 @@ class IRTriggerSensor(SensorEntity):
 
     @property
     def device_info(self):
-        """Return device information about this hub."""
+        """Return device information about this receiver."""
         return {
-            "identifiers": {(DOMAIN, self._receiver)},
-            "name": f"IR Hub ({self._receiver})",
+            "identifiers": {(DOMAIN, f"rx_{self._receiver}")},
+            "name": f"IR Receiver ({self._receiver})",
             "manufacturer": "IR-Trigger",
-            "model": "IR-Hub",
+            "model": "IR-Receiver",
         }
 
     async def async_added_to_hass(self):
