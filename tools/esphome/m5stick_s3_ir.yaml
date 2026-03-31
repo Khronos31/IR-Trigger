@@ -1,0 +1,74 @@
+substitutions:
+  name: "m5stick-s3-ir"
+  friendly_name: "M5StickS3 IR Trigger"
+  receiver_name: "M5StickS3_LivingRoom"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: m5stick-c
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+ota:
+
+wifi:
+  ssid: "YOUR_SSID"
+  password: "YOUR_PASSWORD"
+
+remote_receiver:
+  pin: 
+    number: GPIO33  # Grove Port (G33) is typically used for IR Receiver Unit
+    inverted: true
+  dump: all
+  # NEC Format
+  on_nec:
+    then:
+      - homeassistant.event:
+          event: ir_trigger_received
+          data:
+            receiver: ${receiver_name}
+          data_template:
+            code: !lambda |-
+              char buffer[32];
+              sprintf(buffer, "NEC_%04X%04X", x.address, x.command);
+              return std::string(buffer);
+  
+  # AEHA Format (Panasonic)
+  on_panasonic:
+    then:
+      - homeassistant.event:
+          event: ir_trigger_received
+          data:
+            receiver: ${receiver_name}
+          data_template:
+            code: !lambda |-
+              char buffer[32];
+              sprintf(buffer, "AEHA_%04X%08X", x.address, x.command);
+              return std::string(buffer);
+
+  # SONY Format
+  on_sony:
+    then:
+      - homeassistant.event:
+          event: ir_trigger_received
+          data:
+            receiver: ${receiver_name}
+          data_template:
+            code: !lambda |-
+              char buffer[32];
+              sprintf(buffer, "SONY_%08X", x.data);
+              return std::string(buffer);
+
+# M5StickS3 Built-in Display (Optional)
+# display:
+#   - platform: st7789v
+#     ...

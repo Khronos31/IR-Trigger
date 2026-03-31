@@ -13,7 +13,7 @@ from .const import (
     DOMAIN,
     SIGNAL_LOAD_COMPLETE,
     CONF_NAME,
-    CONF_TRANSMITTER,
+    CONF_HUB,
     CONF_BUTTONS,
     CONF_FORCE_AEHA_TX,
     CONF_DOMAIN,
@@ -34,14 +34,14 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
             if device_info.get(CONF_DOMAIN) != "media_player":
                 continue
 
-            transmitter_id = device_info.get(CONF_TRANSMITTER)
-            if not transmitter_id:
-                # Silently skip devices without a transmitter (e.g., remotes)
+            hub_id = device_info.get(CONF_HUB)
+            if not hub_id:
+                # Silently skip devices without a hub (e.g., remotes)
                 continue
 
-            transmitter = ir_data.transmitters.get(transmitter_id)
-            if not transmitter:
-                _LOGGER.warning("Transmitter %s not found for media_player %s", transmitter_id, device_id)
+            hub = ir_data.hubs.get(hub_id)
+            if not hub:
+                _LOGGER.warning("Hub %s not found for media_player %s", hub_id, device_id)
                 continue
                 
             entities.append(
@@ -49,8 +49,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                     hass,
                     device_id,
                     device_info.get(CONF_NAME, device_id),
-                    transmitter,
-                    transmitter_id,
+                    hub,
+                    hub_id,
                     device_info.get(CONF_BUTTONS, {}),
                     device_info.get(CONF_MAPPING, {}),
                     device_info.get(CONF_FORCE_AEHA_TX, False)

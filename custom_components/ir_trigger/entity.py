@@ -7,13 +7,13 @@ _LOGGER = logging.getLogger(__name__)
 class IRTriggerEntity(Entity):
     """Base class for IR Trigger entities (Light, Switch, MediaPlayer)."""
 
-    def __init__(self, hass, device_id, device_name, transmitter, transmitter_id, buttons, mapping, force_aeha_tx):
+    def __init__(self, hass, device_id, device_name, hub, hub_id, buttons, mapping, force_aeha_tx):
         """Initialize the entity."""
         self.hass = hass
         self._device_id = device_id
         self._device_name = device_name
-        self._transmitter = transmitter
-        self._transmitter_id = transmitter_id
+        self._hub = hub
+        self._hub_id = hub_id
         self._buttons = buttons
         self._mapping = mapping
         self._force_aeha_tx = force_aeha_tx
@@ -32,8 +32,10 @@ class IRTriggerEntity(Entity):
             _LOGGER.warning("Button key %s not found in buttons for device %s", button_key, self._device_id)
             return False
             
-        await self._transmitter.async_send(ir_code, force_aeha_tx=self._force_aeha_tx)
-        return True
+        if self._hub:
+            await self._hub.async_send(ir_code, force_aeha_tx=self._force_aeha_tx)
+            return True
+        return False
 
     @property
     def device_info(self):
@@ -43,5 +45,5 @@ class IRTriggerEntity(Entity):
             "name": self._device_name,
             "manufacturer": "IR-Trigger",
             "model": "Target Device",
-            ATTR_VIA_DEVICE: (DOMAIN, self._transmitter_id),
+            ATTR_VIA_DEVICE: (DOMAIN, self._hub_id),
         }

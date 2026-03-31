@@ -1,19 +1,24 @@
-# IR-Trigger.yaml
+# IR-Trigger.yaml (V2 Architecture)
 
-transmitters:
-  tx_study_ad00020p:
-    name: "スタディのIR送信機 (AD00020P)"
-    type: local_usb
-    index: 1
-    local_receivers:
-      - rx_study_ad00020p
-      - rx_study_atom
-  tx_living_atom:
-    name: "リビングのIR送信機 (AtomS3)"
-    type: "esphome"
-    entity_id: "remote.atom_s3_living"
-    local_receivers:
-      - rx_living_ad00020p
+hubs:
+  hub_study:
+    name: "スタディのHub"
+    tx:
+      type: local_usb
+      index: 1
+    rx:
+      type: local_usb
+      index: 1
+    local_receivers: [hub_study, hub_living]
+
+  hub_living:
+    name: "リビングのHub"
+    tx:
+      type: esphome
+      entity_id: remote.atom_s3_living
+    rx:
+      type: webhook
+      webhook_id: "living_hub_rx_12345"
 
 devices:
   C_RT1:
@@ -22,23 +27,23 @@ devices:
 
   TV_Study:
     name: "スタディのテレビ"
-    transmitter: "tx_study_ad00020p"
+    hub: "hub_study"
     template: "J-MX100RC"
 
   Recorder_Study:
     name: "スタディのレコーダー"
-    transmitter: "tx_study_ad00020p"
+    hub: "hub_study"
     template: "RC-R2"
 
   HDMI_Study:
     name: "スタディのHDMI"
-    transmitter: "tx_study_ad00020p"
+    hub: "hub_study"
     force_aeha_tx: true
     template: "UGREEN-55857"
 
   Light_Living:
     name: "リビングのライト"
-    transmitter: "tx_living_atom"
+    hub: "hub_living"
     template: "IR-A04HS"
 
 global:

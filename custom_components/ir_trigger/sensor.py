@@ -6,7 +6,6 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import (
     DOMAIN,
-    SIGNAL_NEW_RECEIVER,
     SIGNAL_UPDATE_SENSOR,
     ATTR_CODE,
     ATTR_DEVICE,
@@ -20,22 +19,18 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     _LOGGER.info("IR-Trigger sensor platform initialized")
     ir_data = hass.data[DOMAIN]
     
-    async def async_add_receiver(receiver: str):
-        """Add new sensors for a new receiver."""
-        _LOGGER.info("Adding sensors for new receiver: %s", receiver)
-        sensors = [
-            IRTriggerSensor(receiver, ATTR_CODE, "Latest IR Signal", "mdi:remote"),
-            IRTriggerSensor(receiver, ATTR_DEVICE, "Latest IR Device", "mdi:gamepad-variant"),
-            IRTriggerSensor(receiver, ATTR_BUTTON, "Latest IR Button", "mdi:radiobox-marked"),
-        ]
-        async_add_entities(sensors)
-
-    # Listen for new receivers
-    async_dispatcher_connect(hass, SIGNAL_NEW_RECEIVER, async_add_receiver)
+    sensors = []
+    for hub_id, hub in ir_data.hubs.items():
+        if hub.rx:
+            _LOGGER.info("Adding sensors for RX Hub: %s", hub_id)
+            sensors.extend([
+                IRTriggerSensor(hub_id, ATTR_CODE, "Latest IR Signal", "mdi:remote"),
+                IRTriggerSensor(hub_id, ATTR_DEVICE, "Latest IR Device", "mdi:gamepad-variant"),
+                IRTriggerSensor(hub_id, ATTR_BUTTON, "Latest IR Button", "mdi:radiobox-marked"),
+            ])
     
-    # If there are any known receivers (unlikely on startup, but just in case)
-    for receiver in ir_data.known_receivers:
-        await async_add_receiver(receiver)
+    if sensors:
+        async_add_entities(sensors)
 
 class IRTriggerSensor(SensorEntity):
     """Representation of an IR Trigger Sensor."""
@@ -62,12 +57,12 @@ class IRTriggerSensor(SensorEntity):
 
     @property
     def device_info(self):
-        """Return device information about this receiver."""
+        """Return device information about this hub."""
         return {
             "identifiers": {(DOMAIN, self._receiver)},
-            "name": f"IR Receiver ({self._receiver})",
+            "name": f"IR Hub ({self._receiver})",
             "manufacturer": "IR-Trigger",
-            "model": "Virtual IR Receiver",
+            "model": "IR-Hub",
         }
 
     async def async_added_to_hass(self):
