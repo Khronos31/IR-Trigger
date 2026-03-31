@@ -1,9 +1,13 @@
 import logging
 import asyncio
+import threading
+import time
+import math
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
 from datetime import timedelta
 from aiohttp import web
+# ... (rest of imports)
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.components.webhook import async_register as webhook_register, async_unregister as webhook_unregister
@@ -51,37 +55,105 @@ class USBad00020pRX(RXInterface):
         super().__init__(hass, receiver_id)
         self.index = index
         self._running = False
+        self._dev = None
+        self._thread = None
         self._vid = 0x22ea
         self._pid = 0x001e
         self._interface = 3
-        self._endpoint_in = 0x83
+        self._endpoint_out = 0x04
+        self._endpoint_in = 0x84
+        self._pkt_size = 64
 
     async def async_setup(self):
-        _LOGGER.info("Starting USB polling loop for receiver: %s (index: %d)", self.receiver_id, self.index)
+        _LOGGER.info("Starting dedicated USB RX thread for %s (Index: %d)", self.receiver_id, self.index)
         self._running = True
-        asyncio.create_task(self._run_loop())
+        self._thread = threading.Thread(
+            target=self._read_loop_blocking, 
+            daemon=True, 
+            name=f"IR_RX_{self.receiver_id}"
+        )
+        self._thread.start()
 
     async def async_teardown(self):
         self._running = False
+        if self._dev:
+            import usb.util
+            try:
+                # 受信待機モード解除 (0x53, 0x00)
+                out_buf = bytearray([0xFF] * self._pkt_size)
+                out_buf[0], out_buf[1] = 0x53, 0x00
+                self._dev.write(self._endpoint_out, out_buf, timeout=1000)
+                usb.util.dispose_resources(self._dev)
+            except:
+                pass
+            self._dev = None
 
-    async def _run_loop(self):
-        while self._running:
-            code = await asyncio.to_thread(self._poll_usb)
-            if code:
-                self._handle_code(code)
-            await asyncio.sleep(0.1)
-
-    def _poll_usb(self):
+    def _open_device(self):
         import usb.core
+        import usb.util
+        devs = list(usb.core.find(find_all=True, idVendor=self._vid, idProduct=self._pid))
+        if not devs or len(devs) <= self.index:
+            return None
+        dev = devs[self.index]
         try:
-            dev = usb.core.find(idVendor=self._vid, idProduct=self._pid)
-            if not dev: return None
-            # Placeholder for actual hardware polling logic
-            data = dev.read(self._endpoint_in, 64, timeout=500)
-            if data and data[0] == 0x61:
-                return "NEC_REPRODUCED" # Placeholder
-        except: pass
-        return None
+            if dev.is_kernel_driver_active(self._interface):
+                dev.detach_kernel_driver(self._interface)
+            usb.util.claim_interface(dev, self._interface)
+            
+            # 初期化: RECEIVE_WAIT_MODE_WAIT (0x53, 0x01)
+            out_buf = bytearray([0xFF] * self._pkt_size)
+            out_buf[0], out_buf[1] = 0x53, 0x01
+            dev.write(self._endpoint_out, out_buf, timeout=1000)
+            dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+            return dev
+        except Exception as e:
+            _LOGGER.debug("Failed to open USB RX device %d: %s", self.index, e)
+            return None
+
+    def _normalize_ir_data(self, data) -> str:
+        if len(data) < 3: return "RAW_UNKNOWN"
+        format_id = data[0]
+        total_bits = data[1] + data[2]
+        valid_bytes = math.ceil(total_bits / 8)
+        payload = data[3:] if len(data) < 3 + valid_bytes else data[3:3+valid_bytes]
+        hex_payload = "".join(f"{b:02X}" for b in payload)
+
+        prefixes = {1: "AEHA_", 2: "NEC_", 3: "SONY_", 4: "MITSUBISHI_"}
+        prefix = prefixes.get(format_id, "DAIKIN_" if format_id in (5, 6) else "RAW_")
+        return f"{prefix}{hex_payload}"
+
+    def _read_loop_blocking(self):
+        import usb.core
+        while self._running:
+            if not self._dev:
+                self._dev = self._open_device()
+                if not self._dev:
+                    time.sleep(5)
+                    continue
+
+            try:
+                # 読み取り要求 (0x52)
+                out_buf = bytearray([0xFF] * self._pkt_size)
+                out_buf[0] = 0x52
+                self._dev.write(self._endpoint_out, out_buf, timeout=1000)
+                in_buf = self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+
+                if in_buf[0] == 0x52 and in_buf[1] != 0:
+                    code = self._normalize_ir_data(in_buf[1:])
+                    # HAのメインイベントループに安全に処理を委譲
+                    self.hass.loop.call_soon_threadsafe(self._handle_code, code)
+
+            except usb.core.USBError as e:
+                if e.errno != 110: # 110 = timeout
+                    _LOGGER.debug("USB RX Error (errno %s): %s", e.errno, e)
+                    self._dev = None
+                    time.sleep(1)
+            except Exception as e:
+                _LOGGER.error("Unexpected USB RX Error on receiver %s: %s", self.receiver_id, e)
+                self._dev = None
+                time.sleep(1)
+
+            time.sleep(0.01)
 
 class WebhookRX(RXInterface):
     def __init__(self, hass, receiver_id):
