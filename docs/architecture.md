@@ -1,6 +1,6 @@
-# アーキテクチャ解説 (Architecture V2)
+# アーキテクチャ解説 (Architecture)
 
-IR-Trigger V2 の設計思想と構造について、最新の仕様（TX/RX 分離、RESTful Webhook、明示的パス指定）を基に解説します。
+IR-Trigger の設計思想と構造について、最新の仕様（TX/RX 分離、RESTful Webhook、明示的パス指定）を基に解説します。
 
 ---
 

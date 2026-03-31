@@ -2,6 +2,7 @@ import logging
 import asyncio
 from abc import ABC, abstractmethod
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import (
     TX_TYPE_USB_AD00020P,
     TX_TYPE_ESPHOME,
@@ -95,14 +96,16 @@ class ESPHomeTX(TXInterface):
         }, blocking=True)
 
 class WebhookTX(TXInterface):
-    def __init__(self, url):
+    def __init__(self, hass, url):
+        self.hass = hass
         self.url = url
     async def async_send(self, code: str, force_aeha_tx: bool = False):
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            try:
-                await session.post(self.url, json={"code": code}, timeout=10)
-            except: pass
+        session = async_get_clientsession(self.hass)
+        try:
+            async with asyncio.timeout(10):
+                await session.post(self.url, json={"code": code})
+        except Exception as e:
+            _LOGGER.error("Error sending Webhook TX to %s: %s", self.url, e)
 
 class NatureRemoTX(TXInterface):
     def __init__(self, token):
@@ -121,7 +124,7 @@ def create_transmitter(hass: HomeAssistant, config: dict) -> TXInterface:
     elif tx_type == TX_TYPE_ESPHOME:
         return ESPHomeTX(hass, config.get(CONF_ENTITY_ID))
     elif tx_type == TX_TYPE_WEBHOOK:
-        return WebhookTX(config.get("url"))
+        return WebhookTX(hass, config.get("url"))
     elif tx_type == TX_TYPE_NATURE_REMO:
         return NatureRemoTX(config.get("access_token"))
     elif tx_type == TX_TYPE_MOCK:
