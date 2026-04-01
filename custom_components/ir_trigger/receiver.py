@@ -215,8 +215,13 @@ class WebhookRX(RXInterface):
     async def _handle_webhook(self, hass, webhook_id, request):
         try:
             data = await request.json()
-            # Payload is now just {"code": "..."}
             code = data.get("code")
+            raw = data.get("raw")
+
+            # If raw pulses are provided, convert to code string
+            if raw and isinstance(raw, list):
+                code = converter.raw_to_code(raw)
+
             if code:
                 _LOGGER.info("Webhook received for %s: %s", self.receiver_id, code)
                 self._handle_code(code)
