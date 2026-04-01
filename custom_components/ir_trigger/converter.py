@@ -96,6 +96,9 @@ def _decode_mark_space(raw: list[int], config: dict) -> str | None:
         if not _is_match(on_p, config["bit_on"]):
             break # End of data or sync loss
         
+        if off_p > 4000: # Abnormally long OFF is a gap (end of signal)
+            break
+
         if off_p > config["threshold"]:
             bits.append(1)
         else:
@@ -117,6 +120,9 @@ def _decode_sony(raw: list[int], config: dict) -> str | None:
         off_p = raw[i+1]
         
         if not _is_match(off_p, config["bit_off"]):
+            break
+            
+        if on_p > 4000: # Abnormally long ON is a gap
             break
             
         if on_p > config["threshold"]:
