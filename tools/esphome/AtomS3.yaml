@@ -1,0 +1,60 @@
+substitutions:
+  name: "atoms3-ir"
+  friendly_name: "AtomS3 IR Reader"
+  ha_ip: "192.168.1.130" # Replace with your HA IP
+  receiver_id: "rx_atoms3_01" # This must match one of 'receivers' in IR-Trigger configuration
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API (optional if only using Webhook)
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+http_request:
+  timeout: 5s
+
+remote_receiver:
+  pin: 
+    number: GPIO1  # AtomS3 Built-in IR Receiver
+    inverted: true
+  dump: all
+  filter: 120us
+  idle: 25ms
+  # "Dumb Pipe" architecture: Send raw pulses to HA for central processing.
+  on_raw:
+    then:
+      - if:
+          condition:
+            lambda: 'return x.size() > 10;'
+          then:
+            - http_request.post:
+                url: !lambda |-
+                  return "http://${ha_ip}:8123/api/webhook/${receiver_id}";
+                request_headers:
+                  Content-Type: application/json
+                body: !lambda |-
+                  // Construct raw JSON array from pulses. OFF times are normalized to positive integers.
+                  std::string payload = "{\"raw\":[";
+                  for (size_t i = 0; i < x.size(); i++) {
+                    payload += std::to_string(std::abs(x[i]));
+                    if (i < x.size() - 1) payload += ", ";
+                  }
+                  payload += "]}";
+                  return payload;
