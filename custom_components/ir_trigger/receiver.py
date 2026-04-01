@@ -143,12 +143,16 @@ class USBad00020pRX(RXInterface):
                 while self._running:
                     out_buf = bytearray([0xFF] * self._pkt_size)
                     out_buf[0] = 0x52
-                    self._dev.write(self._endpoint_out, out_buf, timeout=1000)
-                    in_buf = self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+                    try:
+                        self._dev.write(self._endpoint_out, out_buf, timeout=1000)
+                        in_buf = self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
 
-                    if in_buf[0] == 0x52 and in_buf[1] != 0:
-                        received_code = self._normalize_ir_data(in_buf[1:])
-                        break
+                        if in_buf[0] == 0x52 and in_buf[1] != 0:
+                            received_code = self._normalize_ir_data(in_buf[1:])
+                            break
+                    except usb.core.USBError as e:
+                        if e.errno != 110: # 110 (ETIMEDOUT) は正常なので無視
+                            raise e
                     time.sleep(0.01)
 
                 if received_code:
