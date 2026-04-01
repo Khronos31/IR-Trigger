@@ -82,8 +82,13 @@ class USBad00020pTX(TXInterface):
     def _do_send(self, packet):
         dev = self._open_device()
         if dev:
-            try: dev.write(self._endpoint_out, packet, timeout=1000)
-            except: self._dev = None
+            try:
+                dev.write(self._endpoint_out, packet, timeout=1000)
+            except:
+                if self._dev:
+                    import usb.util
+                    usb.util.dispose_resources(self._dev)
+                self._dev = None
 
 class ESPHomeTX(TXInterface):
     def __init__(self, hass, entity_id):

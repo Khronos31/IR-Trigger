@@ -175,10 +175,16 @@ class USBad00020pRX(RXInterface):
             except usb.core.USBError as e:
                 # エラー時は再接続
                 _LOGGER.debug("USB RX Error (reconnecting...): %s", e)
+                if self._dev:
+                    import usb.util
+                    usb.util.dispose_resources(self._dev)
                 self._dev = None
                 time.sleep(1)
             except Exception as e:
                 _LOGGER.error("Unexpected USB RX Error on %s: %s", self.receiver_id, e)
+                if self._dev:
+                    import usb.util
+                    usb.util.dispose_resources(self._dev)
                 self._dev = None
                 time.sleep(1)
 
