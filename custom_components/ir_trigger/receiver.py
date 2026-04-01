@@ -12,6 +12,9 @@ from aiohttp import web
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.components.webhook import async_register as webhook_register, async_unregister as webhook_unregister
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from . import converter
 
 from .const import (
     DOMAIN,
@@ -223,11 +226,12 @@ class WebhookRX(RXInterface):
         return web.Response(status=400, text="Invalid Payload")
 
 class NatureRemoRX(RXInterface):
-    def __init__(self, hass, receiver_id, token, interval):
+    def __init__(self, hass, receiver_id, ip, interval):
         super().__init__(hass, receiver_id)
-        self.token = token
+        self.ip = ip
         self.interval = interval
         self._stop_polling = None
+        self._last_data = None
 
     async def async_setup(self):
         async def poll(now):
@@ -235,14 +239,47 @@ class NatureRemoRX(RXInterface):
         self._stop_polling = async_track_time_interval(
             self.hass, poll, timedelta(seconds=self.interval)
         )
+        _LOGGER.info("Started Nature Remo local polling for %s at %s (interval: %s)", 
+                     self.receiver_id, self.ip, self.interval)
 
     async def async_teardown(self):
         if self._stop_polling:
             self._stop_polling()
 
     async def _poll_now(self):
-        # Nature Remo Cloud API polling logic placeholder
-        pass
+        url = f"http://{self.ip}/messages"
+        headers = {"X-Requested-With": "local"}
+        session = async_get_clientsession(self.hass)
+        
+        try:
+            async with asyncio.timeout(2):
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status != 200:
+                        return
+                    
+                    data = await resp.json()
+                    # Nature Remo returns pulses in 'data' field
+                    pulses = data.get("data")
+                    
+                    if not pulses:
+                        return
+                    
+                    # Deduplication
+                    if pulses == self._last_data:
+                        return
+                    
+                    self._last_data = pulses
+                    _LOGGER.debug("Nature Remo %s received new signal: %s", self.receiver_id, pulses)
+                    
+                    # Convert raw pulses to code
+                    code = converter.raw_to_code(pulses)
+                    if code:
+                        self._handle_code(code)
+
+        except asyncio.TimeoutError:
+            _LOGGER.debug("Nature Remo %s poll timeout", self.receiver_id)
+        except Exception as e:
+            _LOGGER.error("Error polling Nature Remo %s: %s", self.receiver_id, e)
 
 def create_receiver(hass: HomeAssistant, receiver_id: str, config: dict) -> Optional[RXInterface]:
     rx_type = config.get(CONF_TYPE)
@@ -254,7 +291,7 @@ def create_receiver(hass: HomeAssistant, receiver_id: str, config: dict) -> Opti
         return NatureRemoRX(
             hass, 
             receiver_id, 
-            config.get("access_token"), 
+            config.get("ip"), 
             config.get(CONF_POLL_INTERVAL, 1.0)
         )
     return None
