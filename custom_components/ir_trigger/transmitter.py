@@ -84,11 +84,14 @@ class USBad00020pTX(TXInterface):
         if dev:
             try:
                 dev.write(self._endpoint_out, packet, timeout=1000)
-            except:
+            except Exception as e:
+                _LOGGER.error("Failed to send USB IR code on index %d: %s", self.index, e)
                 if self._dev:
                     import usb.util
                     usb.util.dispose_resources(self._dev)
                 self._dev = None
+        else:
+            _LOGGER.error("USB device not found or failed to open for index %d", self.index)
 
 class ESPHomeTX(TXInterface):
     def __init__(self, hass, entity_id):
