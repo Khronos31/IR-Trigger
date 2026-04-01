@@ -132,11 +132,16 @@ class USBad00020pRX(RXInterface):
                     continue
 
             try:
-                # 1. 待機モード開始 (Legacy方式: 毎回セット)
-                out_buf = bytearray([0xFF] * self._pkt_size)
-                out_buf[0], out_buf[1] = 0x53, 0x01
-                self._dev.write(self._endpoint_out, out_buf, timeout=1000)
-                self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+                try:
+                    # 1. 待機モード開始 (Legacy方式: 毎回セット)
+                    out_buf = bytearray([0xFF] * self._pkt_size)
+                    out_buf[0], out_buf[1] = 0x53, 0x01
+                    self._dev.write(self._endpoint_out, out_buf, timeout=1000)
+                    self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+                except usb.core.USBError as e:
+                    if e.errno != 110: # ETIMEDOUT以外は外側のexceptへ
+                        raise e
+                    continue # タイムアウト時は安全にループの先頭へ戻る
 
                 # 2. 読み取りループ
                 received_code = None
@@ -158,10 +163,14 @@ class USBad00020pRX(RXInterface):
                 if received_code:
                     self.hass.loop.call_soon_threadsafe(self._handle_code, received_code)
 
-                # 3. 待機モード終了 (これでバッファを強制クリア)
-                out_buf[0], out_buf[1] = 0x53, 0x00
-                self._dev.write(self._endpoint_out, out_buf, timeout=1000)
-                self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+                try:
+                    # 3. 待機モード終了 (これでバッファを強制クリア)
+                    out_buf[0], out_buf[1] = 0x53, 0x00
+                    self._dev.write(self._endpoint_out, out_buf, timeout=1000)
+                    self._dev.read(self._endpoint_in, self._pkt_size, timeout=1000)
+                except usb.core.USBError as e:
+                    if e.errno != 110:
+                        raise e
 
             except usb.core.USBError as e:
                 # エラー時は再接続
