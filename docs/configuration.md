@@ -19,7 +19,7 @@ state_machines: ...  # 5. ステートマシン（モード別の動的ルーテ
 
 ### 送信機 (`transmitters`)
 HA から赤外線を発信するデバイスを指定します。
-- `type`: `usb_ad00020p` (旧 local_usb), `esphome`, `nature_remo`, `webhook`, `mock`
+- `type`: `usb_ad00020p`, `esphome`, `nature_remo`, `webhook`, `mock`
 - `local_receivers`: この送信機の近くにある受信機 ID のリスト。ハウリング（無限ループ）防止用。
 
 ### 受信機 (`receivers`)
