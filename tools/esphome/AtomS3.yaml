@@ -1,6 +1,6 @@
 substitutions:
   name: "atoms3-ir"
-  friendly_name: "AtomS3 IR Reader"
+  friendly_name: "AtomS3 IR Trigger"
   ha_ip: "192.168.1.130" # Replace with your HA IP
   receiver_id: "rx_atoms3_01" # This must match one of 'receivers' in IR-Trigger configuration
 
@@ -15,12 +15,20 @@ esp32:
 
 # Enable logging
 logger:
-  level: DEBUG
 
 # Hybrid Architecture:
-# - TX: Uses Native Home Assistant API (remote.send_command)
+# - TX: Uses Native Home Assistant API
 # - RX: Uses HTTP Webhook for RAW pulse distribution (Dumb Pipe)
 api:
+  encryption:
+    key: !secret api_encryption_key
+  actions:
+    - action: send_raw
+      variables:
+        command: int[]
+      then:
+        - remote_transmitter.transmit_raw: 
+            code: !lambda 'return command;'
 
 ota:
   - platform: esphome
@@ -50,7 +58,7 @@ remote_receiver:
     then:
       - if:
           condition:
-            lambda: 'return x.size() > 10;'
+            lambda: 'return x.size() > 20;'
           then:
             - http_request.post:
                 url: !lambda |-
