@@ -1,6 +1,7 @@
 import logging
 import os
 import asyncio
+import time
 from pathlib import Path
 
 from homeassistant.core import HomeAssistant, ServiceCall, Event, callback
@@ -78,6 +79,11 @@ class IRTriggerData:
         self.global_remap = {}
         self.state_machines = []
         self.loaded = False
+        
+        # Smart Debounce state tracking
+        self.last_event_code = None
+        self.last_event_time = 0.0
+        self.last_event_receiver = None
 
     async def load_config(self):
         config_path = self.hass.config.path(DICT_FILE_NAME)
@@ -272,6 +278,26 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         if not receiver or not code: 
             _LOGGER.debug("Incomplete IR event data: %s", event.data)
             return
+            
+        # Smart Debounce Logic: Filter polling echoes and rapid chattering
+        now = time.time()
+        if code == ir_data.last_event_code:
+            time_diff = now - ir_data.last_event_time
+            # 1. Echo from different receiver (e.g. Nature Remo cloud polling delay)
+            if receiver != ir_data.last_event_receiver:
+                if time_diff < 2.0:
+                    _LOGGER.info("Smart Debounce: Ignored echo from different receiver %s (dt: %.2fs)", receiver, time_diff)
+                    return
+            # 2. Rapid repeat from same receiver (User double-press or chattering)
+            else:
+                if time_diff < 0.3:
+                    _LOGGER.debug("Smart Debounce: Ignored rapid repeat from same receiver %s (dt: %.2fs)", receiver, time_diff)
+                    return
+        
+        # Update last event state
+        ir_data.last_event_code = code
+        ir_data.last_event_time = now
+        ir_data.last_event_receiver = receiver
 
         _LOGGER.info("IR Signal Received: Receiver=%s, Code=%s", receiver, code)
 
