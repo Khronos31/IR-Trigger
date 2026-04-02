@@ -12,6 +12,7 @@ from .const import (
     CONF_TYPE,
     CONF_INDEX,
     CONF_ENTITY_ID,
+    CONF_NODE_NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,9 +95,9 @@ class USBad00020pTX(TXInterface):
             _LOGGER.error("USB device not found or failed to open for index %d", self.index)
 
 class ESPHomeTX(TXInterface):
-    def __init__(self, hass, entity_id):
+    def __init__(self, hass, node_name):
         self.hass = hass
-        self.entity_id = entity_id
+        self.node_name = node_name
 
     async def async_send(self, code: str, force_aeha_tx: bool = False):
         from . import converter
@@ -105,8 +106,7 @@ class ESPHomeTX(TXInterface):
             _LOGGER.error("Failed to convert code to RAW for ESPHome: %s", code)
             return
 
-        # ESPHome remote.send_command expects [ON, -OFF, ON, -OFF...]
-        # we convert our internal [ON, OFF, ON, OFF...] array
+        # ESPHome command expects [ON, -OFF, ON, -OFF...]
         esphome_raw = []
         for i, pulse in enumerate(raw):
             if i % 2 == 1: # Odd index is OFF time
@@ -114,15 +114,17 @@ class ESPHomeTX(TXInterface):
             else: # Even index is ON time
                 esphome_raw.append(abs(pulse))
 
-        _LOGGER.info("Sending ESPHome Native RAW TX: %s via %s", code, self.entity_id)
+        # Call custom ESPHome action: esphome.<node_name>_send_raw
+        service_name = f"{self.node_name}_send_raw"
+
+        _LOGGER.info("Sending ESPHome Custom RAW TX: %s via esphome.%s", code, service_name)
         try:
-            await self.hass.services.async_call("remote", "send_command", {
-                "entity_id": self.entity_id,
+            await self.hass.services.async_call("esphome", service_name, {
                 "command": esphome_raw
             }, blocking=True)
-            _LOGGER.info("ESPHome Native TX sent successfully")
+            _LOGGER.info("ESPHome Custom TX sent successfully")
         except Exception as e:
-            _LOGGER.error("Error sending ESPHome Native TX to %s: %s", self.entity_id, e)
+            _LOGGER.error("Error sending ESPHome Custom TX to %s: %s", service_name, e)
 
 class WebhookTX(TXInterface):
     def __init__(self, hass, url):
@@ -181,7 +183,7 @@ def create_transmitter(hass: HomeAssistant, config: dict) -> TXInterface:
     if tx_type == TX_TYPE_USB_AD00020P:
         return USBad00020pTX(hass, config.get(CONF_INDEX, 0))
     elif tx_type == TX_TYPE_ESPHOME:
-        return ESPHomeTX(hass, config.get(CONF_ENTITY_ID))
+        return ESPHomeTX(hass, config.get(CONF_NODE_NAME))
     elif tx_type == TX_TYPE_WEBHOOK:
         return WebhookTX(hass, config.get("url"))
     elif tx_type == TX_TYPE_NATURE_REMO:
