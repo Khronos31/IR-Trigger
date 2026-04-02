@@ -72,8 +72,50 @@ def raw_to_code(raw: list[int]) -> str:
     return f"RAW_{csv_pulses}"
 
 def code_to_raw(code: str) -> list[int]:
-    """Placeholder for future implementation."""
-    raise NotImplementedError("code_to_raw is not implemented yet")
+    """Convert code string back to RAW pulse array."""
+    if code.startswith("RAW_"):
+        try:
+            return [int(x) for x in code[4:].split(",")]
+        except ValueError:
+            return []
+
+    # Format check (e.g., NEC_XXXXXXXX)
+    parts = code.split("_")
+    if len(parts) != 2:
+        return []
+
+    name, hex_data = parts[0], parts[1]
+    if name not in PROTOCOLS:
+        return []
+
+    config = PROTOCOLS[name]
+    
+    # Convert HEX to bits (LSB First as we did in _bits_to_hex)
+    bits = []
+    try:
+        for i in range(0, len(hex_data), 2):
+            byte_val = int(hex_data[i:i+2], 16)
+            for b_idx in range(8):
+                bits.append((byte_val >> b_idx) & 1)
+    except ValueError:
+        return []
+
+    # Construct RAW array
+    raw = [config["leader_on"], config["leader_off"]]
+    
+    if name == "SONY":
+        for bit in bits:
+            raw.append(config["bit_on_1"] if bit else config["bit_on_0"])
+            raw.append(config["bit_off"])
+    else:
+        # NEC, AEHA, DAIKIN (Mark/Space)
+        for bit in bits:
+            raw.append(config["bit_on"])
+            raw.append(config["bit1_off"] if bit else config["bit0_off"])
+        # Append Stop Bit
+        raw.append(config["bit_on"])
+
+    return raw
 
 def _is_match(actual: int, target: int) -> bool:
     """Check if actual pulse width is within tolerance of target."""

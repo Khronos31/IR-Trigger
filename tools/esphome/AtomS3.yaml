@@ -17,7 +17,9 @@ esp32:
 logger:
   level: DEBUG
 
-# Enable Home Assistant API (optional if only using Webhook)
+# Hybrid Architecture:
+# - TX: Uses Native Home Assistant API (remote.send_command)
+# - RX: Uses HTTP Webhook for RAW pulse distribution (Dumb Pipe)
 api:
 
 ota:
@@ -30,6 +32,12 @@ wifi:
 http_request:
   timeout: 5s
 
+remote_transmitter:
+  id: ir_tx
+  pin: GPIO2
+  carrier_duty_percent: 50%
+  non_blocking: true
+
 remote_receiver:
   pin: 
     number: GPIO1  # AtomS3 Built-in IR Receiver
@@ -37,7 +45,7 @@ remote_receiver:
   dump: all
   filter: 120us
   idle: 25ms
-  # "Dumb Pipe" architecture: Send raw pulses to HA for central processing.
+  # "Dumb Pipe" architecture: Send raw pulses to HA for central processing via Webhook.
   on_raw:
     then:
       - if:
@@ -50,7 +58,7 @@ remote_receiver:
                 request_headers:
                   Content-Type: application/json
                 body: !lambda |-
-                  // Construct raw JSON array from pulses. OFF times are normalized to positive integers.
+                  // Construct raw JSON array from pulses. OFF times are normalized to positive integers for HA processing.
                   std::string payload = "{\"raw\":[";
                   for (size_t i = 0; i < x.size(); i++) {
                     payload += std::to_string(std::abs(x[i]));

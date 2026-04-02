@@ -97,13 +97,32 @@ class ESPHomeTX(TXInterface):
     def __init__(self, hass, entity_id):
         self.hass = hass
         self.entity_id = entity_id
+
     async def async_send(self, code: str, force_aeha_tx: bool = False):
-        parts = code.split('_')
-        if len(parts) != 2: return
-        protocol, signal = parts
-        await self.hass.services.async_call("remote", "send_command", {
-            "entity_id": self.entity_id, "command": f"protocol: {protocol}, data: 0x{signal}"
-        }, blocking=True)
+        from . import converter
+        raw = converter.code_to_raw(code)
+        if not raw:
+            _LOGGER.error("Failed to convert code to RAW for ESPHome: %s", code)
+            return
+
+        # ESPHome remote.send_command expects [ON, -OFF, ON, -OFF...]
+        # we convert our internal [ON, OFF, ON, OFF...] array
+        esphome_raw = []
+        for i, pulse in enumerate(raw):
+            if i % 2 == 1: # Odd index is OFF time
+                esphome_raw.append(-abs(pulse))
+            else: # Even index is ON time
+                esphome_raw.append(abs(pulse))
+
+        _LOGGER.info("Sending ESPHome Native RAW TX: %s via %s", code, self.entity_id)
+        try:
+            await self.hass.services.async_call("remote", "send_command", {
+                "entity_id": self.entity_id,
+                "command": esphome_raw
+            }, blocking=True)
+            _LOGGER.info("ESPHome Native TX sent successfully")
+        except Exception as e:
+            _LOGGER.error("Error sending ESPHome Native TX to %s: %s", self.entity_id, e)
 
 class WebhookTX(TXInterface):
     def __init__(self, hass, url):
@@ -111,20 +130,47 @@ class WebhookTX(TXInterface):
         self.url = url
         
     async def async_send(self, code: str, force_aeha_tx: bool = False):
-        _LOGGER.info("Sending Webhook TX: %s -> %s", code, self.url)
+        from . import converter
+        raw = converter.code_to_raw(code)
+        if not raw:
+            _LOGGER.error("Failed to convert code to RAW: %s", code)
+            return
+
+        _LOGGER.info("Sending Webhook TX (RAW): %s -> %s", code, self.url)
         session = async_get_clientsession(self.hass)
         try:
             async with asyncio.timeout(10):
-                await session.post(self.url, json={"code": code})
+                # Send as raw pulse array for V2 "Dumb Pipe" architecture
+                await session.post(self.url, json={"raw": raw})
             _LOGGER.info("Webhook TX sent successfully")
         except Exception as e:
             _LOGGER.error("Error sending Webhook TX to %s: %s", self.url, e)
 
 class NatureRemoTX(TXInterface):
-    def __init__(self, token):
-        self.token = token
+    def __init__(self, hass, ip):
+        self.hass = hass
+        if not ip:
+            _LOGGER.error("NatureRemoTX initialized without IP address")
+        self.url = f"http://{ip}/messages"
+
     async def async_send(self, code: str, force_aeha_tx: bool = False):
-        _LOGGER.warning("Nature Remo TX not fully implemented yet")
+        from . import converter
+        raw = converter.code_to_raw(code)
+        if not raw:
+            _LOGGER.error("Failed to convert code to RAW for Nature Remo: %s", code)
+            return
+
+        _LOGGER.info("Sending Nature Remo Local TX (RAW): %s -> %s", code, self.url)
+        session = async_get_clientsession(self.hass)
+        try:
+            async with asyncio.timeout(10):
+                headers = {"X-Requested-With": "local"}
+                # Nature Remo Local API format: us pulses, 38kHz
+                payload = {"format": "us", "freq": 38, "data": raw}
+                await session.post(self.url, json=payload, headers=headers)
+            _LOGGER.info("Nature Remo Local TX sent successfully")
+        except Exception as e:
+            _LOGGER.error("Error sending Nature Remo TX to %s: %s", self.url, e)
 
 class MockTX(TXInterface):
     async def async_send(self, code: str, force_aeha_tx: bool = False):
@@ -139,7 +185,7 @@ def create_transmitter(hass: HomeAssistant, config: dict) -> TXInterface:
     elif tx_type == TX_TYPE_WEBHOOK:
         return WebhookTX(hass, config.get("url"))
     elif tx_type == TX_TYPE_NATURE_REMO:
-        return NatureRemoTX(config.get("access_token"))
+        return NatureRemoTX(hass, config.get("ip"))
     elif tx_type == TX_TYPE_MOCK:
         return MockTX()
     return MockTX() # Default fallback
