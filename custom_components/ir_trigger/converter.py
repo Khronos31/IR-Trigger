@@ -119,6 +119,13 @@ def code_to_raw(code: str) -> list[int]:
             raw.append(config["bit1_off"] if bit else config["bit0_off"])
         # Append Stop Bit
         raw.append(config["bit_on"])
+        
+        # Add NEC format specific repeat code
+        if name == "NEC":
+            raw.append(40000) # 40ms Gap
+            raw.append(config["leader_on"])
+            raw.append(config["leader_off"] // 2)
+            raw.append(config["bit_on"])
 
     return raw
 
