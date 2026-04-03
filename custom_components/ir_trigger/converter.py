@@ -18,6 +18,14 @@ PROTOCOLS = {
         "bit1_off": 1680,
         "threshold": 1200, # If OFF > 1200us, it's bit 1
     },
+    "NEC_L": {
+        "leader_on": 9000,
+        "leader_off": 4500,
+        "bit_on": 680,
+        "bit0_off": 730,
+        "bit1_off": 2150,
+        "threshold": 1400,
+    },
     "AEHA": { # KADEN
         "leader_on": 3200,
         "leader_off": 1600,
@@ -120,8 +128,8 @@ def code_to_raw(code: str) -> list[int]:
         # Append Stop Bit
         raw.append(config["bit_on"])
         
-        # Add NEC format specific repeat code
-        if name == "NEC":
+        # 🛡️ NEC系特有のリピートコード付与
+        if name in ["NEC", "NEC_L"]:
             raw.append(40000) # 40ms Gap
             raw.append(config["leader_on"])
             raw.append(config["leader_off"] // 2)
