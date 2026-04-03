@@ -220,6 +220,7 @@ class WebhookRX(RXInterface):
 
             # If raw pulses are provided, convert to code string
             if raw and isinstance(raw, list):
+                _LOGGER.debug("RAW payload received from %s: %s", self.receiver_id, raw)
                 code = converter.raw_to_code(raw)
 
             if code:
