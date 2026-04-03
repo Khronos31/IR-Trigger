@@ -7,17 +7,18 @@ private:
     std::vector<String> logs;
     const int maxLogs = 5;
     bool screenHidden = false;
+    bool needsBackgroundRedraw = true;
 
 public:
     void setup() {
         logs.clear();
         screenHidden = false;
+        needsBackgroundRedraw = true;
         addLog("SYS: DUMB PIPE READY");
     }
 
     void addLog(const String& msg) {
         String logLine = msg;
-        // Truncate if too long (assuming ~25-30 chars fit horizontally at text size 1 or 2)
         if (logLine.length() > 30) {
             logLine = logLine.substring(0, 30);
         }
@@ -28,26 +29,42 @@ public:
         }
     }
 
-    void draw() {
+    void draw(bool fullDraw = false) {
         if (screenHidden) {
-            M5.Display.fillScreen(TFT_BLACK);
+            if (fullDraw || needsBackgroundRedraw) {
+                M5.Display.fillScreen(TFT_BLACK);
+                needsBackgroundRedraw = false;
+            }
             return;
         }
         
-        M5.Display.fillScreen(TFT_BLACK);
-        M5.Display.setCursor(0, 5);
-        M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
-        M5.Display.setTextSize(2);
-        M5.Display.println("[DUMB PIPE]");
-        M5.Display.println("-------------");
-        
-        M5.Display.setTextSize(1);
-        for(size_t i = 0; i < logs.size(); i++) {
-            M5.Display.println(logs[i]);
+        if (fullDraw || needsBackgroundRedraw) {
+            M5.Display.fillScreen(TFT_BLACK);
+            M5.Display.setCursor(0, 5);
+            M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
+            M5.Display.setTextSize(2);
+            M5.Display.println("[DUMB PIPE]");
+            M5.Display.println("-------------");
+            
+            M5.Display.setCursor(0, M5.Display.height() - 15);
+            M5.Display.setTextSize(1);
+            M5.Display.println("BtnA: Screen Toggle | BtnB: < BACK");
+            needsBackgroundRedraw = false;
         }
         
-        M5.Display.setCursor(0, M5.Display.height() - 15);
-        M5.Display.println("BtnA: Screen Toggle | BtnB: < BACK");
+        M5.Display.setCursor(0, 45);
+        M5.Display.setTextSize(1);
+        M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
+        
+        for(size_t i = 0; i < maxLogs; i++) {
+            if (i < logs.size()) {
+                String padded = logs[i];
+                while(padded.length() < 30) padded += " ";
+                M5.Display.println(padded);
+            } else {
+                M5.Display.println("                              ");
+            }
+        }
     }
 
     void loop(bool& returnToMenu) {
@@ -58,18 +75,8 @@ public:
 
         if (M5.BtnA.wasPressed()) {
             screenHidden = !screenHidden;
-            draw();
+            needsBackgroundRedraw = true;
+            draw(true);
         }
-
-        // TODO: Implement HTTP POST (Webhook) and AsyncWebServer (RX/TX)
-        // Simulate dummy logs for now (replace with actual network triggers later)
-        /*
-        static uint32_t lastMock = 0;
-        if (millis() - lastMock > 5000 && !screenHidden) {
-            addLog("RX: RAW_9000,4500,560...");
-            draw();
-            lastMock = millis();
-        }
-        */
     }
 };

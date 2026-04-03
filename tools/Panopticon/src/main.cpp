@@ -17,20 +17,26 @@ const char* menuNames[] = {"1. Dumb Pipe", "2. Sniper", "3. Sigint Log"};
 const State menuStates[] = {STATE_DUMB_PIPE, STATE_SNIPER, STATE_SIGINT_LOG};
 
 bool btnBLongPressedHandled = false;
+bool needsMenuRedraw = true;
 
 // Instantiate Apps
 AppDumbPipe appDumbPipe;
 AppSniper appSniper;
 AppSigintLog appSigintLog;
 
-void drawMenu() {
-    M5.Display.fillScreen(TFT_BLACK);
-    M5.Display.setCursor(0, 5);
-    M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
-    M5.Display.setTextSize(2);
-    M5.Display.println(" PANOPTICON OS");
-    M5.Display.println("-------------");
+void drawMenu(bool fullDraw = false) {
+    if (fullDraw || needsMenuRedraw) {
+        M5.Display.fillScreen(TFT_BLACK);
+        M5.Display.setCursor(0, 5);
+        M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
+        M5.Display.setTextSize(2);
+        M5.Display.println(" PANOPTICON OS");
+        M5.Display.println("-------------");
+        needsMenuRedraw = false;
+    }
     
+    M5.Display.setCursor(0, 45); // Y offset to avoid overdrawing header
+    M5.Display.setTextSize(2);
     for (int i = 0; i < MENU_ITEMS; i++) {
         if (i == menuCursor) {
             M5.Display.setTextColor(TFT_BLACK, TFT_GREEN);
@@ -39,7 +45,7 @@ void drawMenu() {
             M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
             M5.Display.print("  ");
         }
-        M5.Display.println(menuNames[i]);
+        M5.Display.println(String(menuNames[i]) + "       "); // padding to clear artifacts
     }
 }
 
@@ -49,7 +55,7 @@ void setup() {
     
     M5.Display.setRotation(1); // Set landscape
     
-    drawMenu();
+    drawMenu(true);
     Serial.println("Panopticon initialized.");
 }
 
@@ -62,7 +68,7 @@ void loop() {
             if (!btnBLongPressedHandled) {
                 menuCursor--;
                 if (menuCursor < 0) menuCursor = MENU_ITEMS - 1;
-                drawMenu();
+                drawMenu(); // only updates text with bg color
                 btnBLongPressedHandled = true;
             }
         } 
@@ -84,13 +90,13 @@ void loop() {
             // Initialize App
             if (currentState == STATE_DUMB_PIPE) {
                 appDumbPipe.setup();
-                appDumbPipe.draw();
+                appDumbPipe.draw(true);
             } else if (currentState == STATE_SNIPER) {
                 appSniper.setup();
-                appSniper.draw();
+                appSniper.draw(true);
             } else if (currentState == STATE_SIGINT_LOG) {
                 appSigintLog.setup();
-                appSigintLog.draw();
+                appSigintLog.draw(true);
             }
         }
     } else {
@@ -114,7 +120,8 @@ void loop() {
         // Handle transition back to menu
         if (returnToMenu) {
             currentState = STATE_MENU;
-            drawMenu();
+            needsMenuRedraw = true;
+            drawMenu(true);
         }
     }
 }
