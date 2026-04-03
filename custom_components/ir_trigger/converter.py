@@ -79,12 +79,14 @@ def code_to_raw(code: str) -> list[int]:
         except ValueError:
             return []
 
-    # Format check (e.g., NEC_XXXXXXXX)
+    # Format check (e.g., NEC_XXXXXXXX or NEC_XXXXXXXX_26)
     parts = code.split("_")
-    if len(parts) != 2:
+    if len(parts) < 2:
         return []
 
     name, hex_data = parts[0], parts[1]
+    bit_length = int(parts[2]) if len(parts) >= 3 else len(hex_data) * 4
+
     if name not in PROTOCOLS:
         return []
 
@@ -99,6 +101,9 @@ def code_to_raw(code: str) -> list[int]:
                 bits.append((byte_val >> b_idx) & 1)
     except ValueError:
         return []
+
+    # 指定されたビット長で切り詰める（幻のゼロパルスを消去）
+    bits = bits[:bit_length]
 
     # Construct RAW array
     raw = [config["leader_on"], config["leader_off"]]
@@ -147,7 +152,7 @@ def _decode_mark_space(raw: list[int], config: dict) -> str | None:
             bits.append(0)
 
     if not bits: return None
-    return _bits_to_hex(bits)
+    return f"{_bits_to_hex(bits)}_{len(bits)}"
 
 def _decode_sony(raw: list[int], config: dict) -> str | None:
     """SONY protocol decoder (Pulse width modulation on 'ON' state)."""
@@ -173,7 +178,7 @@ def _decode_sony(raw: list[int], config: dict) -> str | None:
             bits.append(0)
 
     if not bits: return None
-    return _bits_to_hex(bits)
+    return f"{_bits_to_hex(bits)}_{len(bits)}"
 
 def _bits_to_hex(bits: list[int]) -> str:
     """Convert bit list to hex string (LSB First)."""
