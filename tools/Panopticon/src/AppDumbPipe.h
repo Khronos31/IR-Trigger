@@ -8,8 +8,8 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-const uint16_t IR_TX_PIN = 9;
-const uint16_t IR_RX_PIN = 33;
+const uint16_t IR_TX_PIN = 46;
+const uint16_t IR_RX_PIN = 42;
 const char* WEBHOOK_URL = "http://192.168.1.X:8123/api/webhook/rx_panopticon";
 
 class AppDumbPipe {
