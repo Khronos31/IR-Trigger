@@ -240,6 +240,7 @@ void drawMenu(bool fullDraw = false) {
 #include <AsyncJson.h>
 #include <ArduinoJson.h>
 #include <IRutils.h>
+#include <LittleFS.h>
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
@@ -250,6 +251,13 @@ void setup() {
     auto cfg = M5.config();
     M5.begin(cfg);
     
+    // Initialize LittleFS for Sigint logging
+    if (!LittleFS.begin(true)) {
+        Serial.println("LittleFS Mount Failed");
+    } else {
+        Serial.println("LittleFS Mounted Successfully");
+    }
+
     M5.Display.setRotation(1); // Set landscape
     M5.Display.setBrightness(128);
     
@@ -400,6 +408,84 @@ void setup() {
         isFindingMe = false;
         M5.Speaker.stop();
         request->send(200, "text/plain", "Glad you found me!");
+    });
+
+    // Endpoint to list saved Sigint logs
+    server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String html = "<html><body><h2>Sigint Logs</h2><ul>";
+        File root = LittleFS.open("/");
+        File file = root.openNextFile();
+        bool hasLogs = false;
+        while (file) {
+            String fileName = String(file.name());
+            // Remove any leading slash just in case LittleFS provides one
+            if (fileName.startsWith("/")) fileName = fileName.substring(1);
+            
+            if (fileName.startsWith("sigint_") && fileName.endsWith(".txt")) {
+                hasLogs = true;
+                html += "<li><a href='/download?file=" + fileName + "'>" + fileName + "</a> (" + String(file.size()) + " bytes)</li>";
+            }
+            file = root.openNextFile();
+        }
+        if (!hasLogs) {
+            html += "<p>No logs found.</p>";
+        }
+        html += "</ul>";
+        html += "<form action='/logs/clear' method='POST'><button type='submit' style='background:red;color:white;'>Clear All Logs</button></form>";
+        html += "</body></html>";
+        request->send(200, "text/html", html);
+    });
+
+    // Endpoint for forced download of log files
+    server.on("/download", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("file")) {
+            String fileName = request->getParam("file")->value();
+            if (!fileName.startsWith("/")) {
+                fileName = "/" + fileName;
+            }
+            if (LittleFS.exists(fileName)) {
+                // Read into memory and force download as attachment
+                File file = LittleFS.open(fileName, "r");
+                if (file) {
+                    String content = file.readString();
+                    file.close();
+                    
+                    AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", content);
+                    response->addHeader("Content-Disposition", "attachment; filename=\"" + fileName.substring(1) + "\"");
+                    request->send(response);
+                } else {
+                    request->send(500, "text/plain", "Failed to open file: " + fileName);
+                }
+            } else {
+                request->send(404, "text/plain", "File not found: " + fileName);
+            }
+        } else {
+            request->send(400, "text/plain", "Missing file parameter");
+        }
+    });
+
+    // Endpoint to clear all logs safely
+    server.on("/logs/clear", HTTP_POST, [](AsyncWebServerRequest *request) {
+        File root = LittleFS.open("/");
+        File file = root.openNextFile();
+        std::vector<String> filesToDelete;
+        
+        while (file) {
+            String fileName = String(file.name());
+            if (fileName.startsWith("sigint_") && fileName.endsWith(".txt")) {
+                if (!fileName.startsWith("/")) fileName = "/" + fileName;
+                filesToDelete.push_back(fileName);
+            }
+            file = root.openNextFile();
+        }
+        
+        for (const String& f : filesToDelete) {
+            LittleFS.remove(f);
+        }
+        
+        // Return a script to redirect back to the logs page after clearing
+        String html = "<html><body><script>alert('Cleared " + String(filesToDelete.size()) + " log files.'); window.location.href='/logs';</script></body></html>";
+        request->send(200, "text/html", html);
     });
 
     if (WiFi.status() == WL_CONNECTED) {

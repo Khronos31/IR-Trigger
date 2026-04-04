@@ -6,6 +6,7 @@
 #include <IRsend.h>
 #include "Config.h"
 #include "AppInterface.h"
+#include <LittleFS.h>
 
 class AppSigintLog : public AppInterface {
 private:
@@ -15,6 +16,9 @@ private:
     uint32_t visualFeedbackEndTime = 0;
     bool needsBackgroundRedraw = true;
     IRsend* irsend = nullptr;
+
+    // Buffer to hold log entries in memory before flushing to disk
+    std::vector<String> sessionLogsBuffer;
 
 public:
     std::vector<uint16_t> latestRaw;
@@ -32,9 +36,39 @@ public:
     virtual void setup() override {
         latestCode = "";
         latestRaw.clear();
+        sessionLogsBuffer.clear();
         btnALongPressedHandled = false;
         visualFeedbackEndTime = 0;
         needsBackgroundRedraw = true;
+
+        // Generate a unique filename based on uptime/RTC for this session
+        // Using millis() to ensure uniqueness if RTC is not synced
+        currentLogFile = "/sigint_" + String(millis()) + ".txt";
+        
+        // Touch the file to create it
+        File file = LittleFS.open(currentLogFile, FILE_WRITE);
+        if (file) {
+            file.close();
+            Serial.println("Created new log file: " + currentLogFile);
+        } else {
+            Serial.println("Failed to create log file: " + currentLogFile);
+        }
+    }
+
+    void flushLogsToDisk() {
+        if (!currentLogFile.isEmpty() && !sessionLogsBuffer.empty()) {
+            File file = LittleFS.open(currentLogFile, FILE_APPEND);
+            if (file) {
+                for (const String& entry : sessionLogsBuffer) {
+                    file.print(entry);
+                }
+                file.close();
+                Serial.printf("Flushed %d logs to %s\n", sessionLogsBuffer.size(), currentLogFile.c_str());
+            } else {
+                Serial.println("Failed to append to log file: " + currentLogFile);
+            }
+            sessionLogsBuffer.clear(); // Clear buffer after flush
+        }
     }
 
     virtual void draw(bool fullDraw = false) override {
@@ -85,7 +119,7 @@ public:
              // Second line: Bit info (Right-aligned to match 1st line)
              if (!bitStr.isEmpty()) {
                  M5.Display.setTextColor(TFT_YELLOW, TFT_BLACK); // Highlight bit info
-                 // Pad with spaces on the left so that the total length is 24 characters, matching the first line
+                 // Pad with spaces on the left so that the total length is 19 characters, matching the first line
                  String paddedBit = bitStr;
                  while (paddedBit.length() < 19) {
                      paddedBit = " " + paddedBit;
@@ -101,10 +135,20 @@ public:
         latestCode = code;
         latestRaw = rawVector;
         draw();
+
+        // Buffer the entry instead of writing immediately
+        String logEntry = "{\"code\":\"" + code + "\",\"raw\":" + rawJson + ",\"ts\":" + String(ts) + "}\n";
+        sessionLogsBuffer.push_back(logEntry);
+        
+        // Safety flush if buffer gets too large (e.g., > 20 entries)
+        if (sessionLogsBuffer.size() > 20) {
+            flushLogsToDisk();
+        }
     }
 
     virtual void loop(bool& returnToMenu) override {
         if (M5.BtnB.wasReleased()) {
+            flushLogsToDisk(); // Save all remaining buffered logs before exiting
             returnToMenu = true;
             return;
         }
@@ -121,6 +165,12 @@ public:
                 if (!latestCode.isEmpty()) {
                     latestCode = "";
                     draw();
+                    
+                    // Remove the last received signal from the log buffer
+                    if (!sessionLogsBuffer.empty()) {
+                        sessionLogsBuffer.pop_back();
+                        Serial.println("Latest signal deleted from buffer.");
+                    }
                 }
                 btnALongPressedHandled = true;
             }
