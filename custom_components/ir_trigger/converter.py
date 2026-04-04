@@ -115,16 +115,20 @@ def code_to_raw(code: str) -> list[int]:
     try:
         val = int(hex_data, 16)
         
-        # SONY and other standard protocols use MSB first encoding for their sendGeneric
-        # (IRremoteESP8266 matchGeneric(..., MSBfirst=true) equivalent representation)
-        is_msb_first = True
-        
-        for i in range(bit_length):
-            if is_msb_first:
-                # MSB First: Shift from highest bit to lowest bit
+        if name == "NEC":
+            # IRremoteESP8266's NEC: MSB first globally, but each 8-bit byte is reversed.
+            # We must reconstruct the raw LSB-first pulse stream from this format.
+            for i in range(0, bit_length, 8):
+                byte_val = (val >> (bit_length - 8 - i)) & 0xFF
+                for j in range(8):
+                    bits.append((byte_val >> j) & 1)
+        elif name == "SONY":
+            # SONY: MSB First
+            for i in range(bit_length):
                 bits.append((val >> (bit_length - 1 - i)) & 1)
-            else:
-                # LSB First
+        else:
+            # DAIKIN, SWITCHBOT, AEHA, etc.: LSB First
+            for i in range(bit_length):
                 bits.append((val >> i) & 1)
     except ValueError:
         return []
@@ -230,17 +234,26 @@ def _decode_sony(raw: list[int], config: dict, protocol_name: str) -> str | None
 def _bits_to_hex(bits: list[int], protocol: str) -> str:
     """Convert bit list to hex string using IRremoteESP8266 logic."""
     val = 0
-    # IRremoteESP8266 matchGeneric builds results->value assuming MSB first
-    # This aligns the resulting hex exactly with what IRrecvDumpV2 produces.
-    is_msb_first = True
     
-    for i, b in enumerate(bits):
-        if b:
-            if is_msb_first:
-                # MSB First: first bit is the most significant
+    if protocol == "NEC":
+        # NEC: Reconstruct the IRremoteESP8266 32-bit (or custom length) value.
+        # It takes LSB-first received bits, but builds an MSB-first value where each byte is reversed.
+        for i in range(0, len(bits), 8):
+            byte_val = 0
+            chunk = bits[i:i+8]
+            for j, b in enumerate(chunk):
+                if b:
+                    byte_val |= (1 << j)
+            val |= (byte_val << (len(bits) - 8 - i))
+    elif protocol == "SONY":
+        # SONY: MSB First
+        for i, b in enumerate(bits):
+            if b:
                 val |= (1 << (len(bits) - 1 - i))
-            else:
-                # LSB First: first bit is the least significant
+    else:
+        # DAIKIN, SWITCHBOT, AEHA, etc.: LSB First
+        for i, b in enumerate(bits):
+            if b:
                 val |= (1 << i)
                 
     # Calculate required hex digits (4 bits per hex digit)
