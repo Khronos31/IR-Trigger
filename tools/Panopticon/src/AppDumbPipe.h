@@ -27,6 +27,8 @@ private:
     std::vector<uint16_t> pendingTxRaw;
     bool hasPendingTx = false;
 
+    bool isServerStarted = false;
+
 public:
     AppDumbPipe() : irrecv(IR_RX_PIN, 1024, 15, true), irsend(IR_TX_PIN), server(8080) {}
 
@@ -35,29 +37,35 @@ public:
         screenHidden = false;
         needsBackgroundRedraw = true;
         
+        // Stabilize floating RX pin to prevent infinite dummy interrupt crashes
+        pinMode(IR_RX_PIN, INPUT_PULLUP);
+        
         irrecv.enableIRIn();
         irsend.begin();
 
-        server.on("/tx", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, 
-            [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-                if (index == 0) { // Assume small JSON payload fits in one chunk
-                    JsonDocument doc;
-                    DeserializationError error = deserializeJson(doc, data, len);
-                    if (!error && doc.containsKey("raw")) {
-                        JsonArray rawArr = doc["raw"].as<JsonArray>();
-                        std::vector<uint16_t> tempRaw;
-                        for (JsonVariant v : rawArr) {
-                            int val = v.as<int>();
-                            tempRaw.push_back(abs(val)); // Handle negative offsets securely
+        if (!isServerStarted) {
+            server.on("/tx", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, 
+                [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+                    if (index == 0) {
+                        JsonDocument doc;
+                        DeserializationError error = deserializeJson(doc, data, len);
+                        if (!error && doc.containsKey("raw")) {
+                            JsonArray rawArr = doc["raw"].as<JsonArray>();
+                            std::vector<uint16_t> tempRaw;
+                            tempRaw.reserve(rawArr.size());
+                            for (JsonVariant v : rawArr) {
+                                tempRaw.push_back(abs(v.as<int>())); 
+                            }
+                            this->pendingTxRaw = tempRaw;
+                            this->hasPendingTx = true;
                         }
-                        this->pendingTxRaw = tempRaw;
-                        this->hasPendingTx = true;
+                        request->send(200, "text/plain", "OK");
                     }
-                    request->send(200, "text/plain", "OK");
                 }
-            }
-        );
-        server.begin();
+            );
+            server.begin();
+            isServerStarted = true;
+        }
 
         addLog("SYS: DUMB PIPE READY");
         addLog("HTTP: Port 8080");
@@ -115,7 +123,6 @@ public:
 
     void loop(bool& returnToMenu) {
         if (M5.BtnB.wasPressed()) {
-            server.end(); // Stop server when exiting app
             returnToMenu = true;
             return;
         }
@@ -136,15 +143,18 @@ public:
 
         // RX Processing
         if (irrecv.decode(&results)) {
-            if (results.rawlen > 1) { // rawbuf[0] is idle time
-                String rawJson = "[";
+            // Ignore noise (very short pulse arrays) to prevent OOM / continuous HTTP requests
+            if (results.rawlen > 20) { 
+                String rawJson;
+                rawJson.reserve(results.rawlen * 6 + 10); // Prevent heap fragmentation (OOM)
+                rawJson = "[";
                 for (uint16_t i = 1; i < results.rawlen; i++) {
                     rawJson += String(results.rawbuf[i] * kRawTick);
                     if (i < results.rawlen - 1) rawJson += ",";
                 }
                 rawJson += "]";
 
-                // Post to HA Webhook securely without blocking drawing completely
+                // Post to HA Webhook securely
                 HTTPClient http;
                 http.begin(WEBHOOK_URL);
                 http.addHeader("Content-Type", "application/json");
