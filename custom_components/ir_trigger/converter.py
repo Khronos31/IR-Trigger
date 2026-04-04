@@ -167,7 +167,10 @@ def _decode_mark_space(raw: list[int], config: dict) -> str | None:
             bits.append(0)
 
     if not bits: return None
-    return f"{_bits_to_hex(bits)}_{len(bits)}"
+    hex_str = _bits_to_hex(bits)
+    if len(bits) % 8 != 0:
+        return f"{hex_str}_{len(bits)}"
+    return hex_str
 
 def _decode_sony(raw: list[int], config: dict) -> str | None:
     """SONY protocol decoder (Pulse width modulation on 'ON' state)."""
@@ -193,7 +196,10 @@ def _decode_sony(raw: list[int], config: dict) -> str | None:
             bits.append(0)
 
     if not bits: return None
-    return f"{_bits_to_hex(bits)}_{len(bits)}"
+    hex_str = _bits_to_hex(bits)
+    if len(bits) % 8 != 0:
+        return f"{hex_str}_{len(bits)}"
+    return hex_str
 
 def _bits_to_hex(bits: list[int]) -> str:
     """Convert bit list to hex string (LSB First)."""
