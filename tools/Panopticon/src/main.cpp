@@ -1,29 +1,24 @@
 #include <M5Unified.h>
+#include <vector>
+#include "AppInterface.h"
 #include "AppDumbPipe.h"
 #include "AppSniper.h"
 #include "AppSigintLog.h"
-
-enum State {
-    STATE_MENU,
-    STATE_DUMB_PIPE,
-    STATE_SNIPER,
-    STATE_SIGINT_LOG
-};
-
-State currentState = STATE_MENU;
-int menuCursor = 0;
-const int MENU_ITEMS = 3;
-const char* menuNames[] = {"1. Dumb Pipe", "2. Sniper", "3. Sigint Log"};
-const State menuStates[] = {STATE_DUMB_PIPE, STATE_SNIPER, STATE_SIGINT_LOG};
-
-bool btnBLongPressedHandled = false;
-bool needsMenuRedraw = true;
-
 #include <IRremoteESP8266.h>
 #include <IRrecv.h>
 #include <IRsend.h>
 #include <IRutils.h>
 #include "Config.h"
+
+// 状態管理（-1 はメニュー、0 以上は apps 配列のインデックス）
+int currentAppIndex = -1;
+int menuCursor = 0;
+
+bool btnBLongPressedHandled = false;
+bool needsMenuRedraw = true;
+
+// アプリケーション・プラグイン管理リスト
+std::vector<AppInterface*> apps;
 
 // Global pointers for ALL hardware and apps to ensure lazy initialization
 IRrecv* irrecv = nullptr;
@@ -195,11 +190,6 @@ String decode_custom_switchbot(const std::vector<uint16_t>& raw) {
     return "";
 }
 
-// Instantiate Apps
-AppDumbPipe* appDumbPipe = nullptr;
-AppSniper* appSniper = nullptr;
-AppSigintLog* appSigintLog = nullptr;
-
 void drawMenu(bool fullDraw = false) {
     if (fullDraw || needsMenuRedraw) {
         M5.Display.fillScreen(TFT_BLACK);
@@ -213,7 +203,7 @@ void drawMenu(bool fullDraw = false) {
     
     M5.Display.setCursor(0, 45); // Y offset to avoid overdrawing header
     M5.Display.setTextSize(2);
-    for (int i = 0; i < MENU_ITEMS; i++) {
+    for (size_t i = 0; i < apps.size(); i++) {
         if (i == menuCursor) {
             M5.Display.setTextColor(TFT_BLACK, TFT_GREEN);
             M5.Display.print("> ");
@@ -221,7 +211,7 @@ void drawMenu(bool fullDraw = false) {
             M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
             M5.Display.print("  ");
         }
-        String name = menuNames[i];
+        String name = apps[i]->getName();
         while (name.length() < 15) {
             name += " ";
         }
@@ -293,14 +283,15 @@ void setup() {
     irrecv->enableIRIn();
     irsend->begin();
 
-    // Now safely instantiate App classes after OS runtime is fully awake
-    appDumbPipe = new AppDumbPipe();
-    appSniper = new AppSniper();
-    appSigintLog = new AppSigintLog();
+    // Safely instantiate and register all App plugins
+    apps.push_back(new AppDumbPipe());
+    apps.push_back(new AppSniper());
+    apps.push_back(new AppSigintLog());
 
-    appDumbPipe->init(irsend);
-    appSniper->init(irsend);
-    appSigintLog->init(irsend);
+    // Initialize all apps with IR hardware
+    for (auto app : apps) {
+        app->init(irsend);
+    }
 
     WiFi.setHostname("Panopticon");
     WiFi.begin(ssid, password);
@@ -356,27 +347,38 @@ void setup() {
             }
         }
 
-                        if (currentState == STATE_DUMB_PIPE && appDumbPipe) {
-                            appDumbPipe->setPendingTx(tempRaw, displayCode);
-                            request->send(200, "text/plain", "OK: Sent to Dumb Pipe");
-                        } else if (currentState == STATE_SNIPER && appSniper) {
-                            appSniper->loadSignalRaw(tempRaw);
+                        // Try to find Dumb Pipe and Sniper by name to route TX dynamically
+                        bool handled = false;
+                        for (size_t i = 0; i < apps.size(); i++) {
+                            String appName = apps[i]->getName();
                             
-                            // Safe async webhook post via global queue
-                            JsonDocument docOut;
-                            docOut["Device"] = "Panopticon_Sniper";
-                            docOut["Button"] = "Target_Locked";
-                            JsonArray rawArrayOut = docOut["raw"].to<JsonArray>();
-                            for (size_t i = 0; i < tempRaw.size(); i++) {
-                                rawArrayOut.add(tempRaw[i]);
-                            }
-                            
-                            String payload;
-                            serializeJson(docOut, payload);
-                            enqueueWebhook(payload);
+                            if (currentAppIndex == i && appName.indexOf("Dumb Pipe") >= 0) {
+                                ((AppDumbPipe*)apps[i])->setPendingTx(tempRaw, displayCode);
+                                request->send(200, "text/plain", "OK: Sent to Dumb Pipe");
+                                handled = true;
+                                break;
+                            } 
+                            else if (currentAppIndex == i && appName.indexOf("Sniper") >= 0) {
+                                ((AppSniper*)apps[i])->loadSignalRaw(tempRaw);
+                                
+                                // Safe async webhook post via global queue
+                                JsonDocument docOut;
+                                docOut["Device"] = "Panopticon_Sniper";
+                                docOut["Button"] = "Target_Locked";
+                                JsonArray rawArrayOut = docOut["raw"].to<JsonArray>();
+                                for (size_t k = 0; k < tempRaw.size(); k++) rawArrayOut.add(tempRaw[k]);
+                                
+                                String payload;
+                                serializeJson(docOut, payload);
+                                enqueueWebhook(payload);
 
-                            request->send(200, "text/plain", "OK: Loaded into Sniper");
-                        } else {
+                                request->send(200, "text/plain", "OK: Loaded into Sniper");
+                                handled = true;
+                                break;
+                            }
+                        }
+
+                        if (!handled) {
                             request->send(400, "text/plain", "App not ready to receive TX");
                         }
     });
@@ -396,12 +398,12 @@ void setup() {
 void loop() {
     M5.update();
     
-    if (currentState == STATE_MENU) {
+    if (currentAppIndex == -1) { // -1 means STATE_MENU
         // Handle Long Press (Reverse Scroll)
         if (M5.BtnB.pressedFor(500)) {
             if (!btnBLongPressedHandled) {
                 menuCursor--;
-                if (menuCursor < 0) menuCursor = MENU_ITEMS - 1;
+                if (menuCursor < 0) menuCursor = apps.size() - 1;
                 drawMenu(); // only updates text with bg color
                 btnBLongPressedHandled = true;
             }
@@ -409,7 +411,7 @@ void loop() {
         // Handle Short Press (Forward Scroll)
         else if (M5.BtnB.wasReleased() && !btnBLongPressedHandled) {
             menuCursor++;
-            if (menuCursor >= MENU_ITEMS) menuCursor = 0;
+            if (menuCursor >= apps.size()) menuCursor = 0;
             drawMenu();
         }
 
@@ -420,40 +422,24 @@ void loop() {
         
         // Enter App
         if (M5.BtnA.wasPressed()) {
-            currentState = menuStates[menuCursor];
-            // Initialize App
-            if (currentState == STATE_DUMB_PIPE && appDumbPipe) {
-                appDumbPipe->setup();
-                appDumbPipe->draw(true);
-            } else if (currentState == STATE_SNIPER && appSniper) {
-                appSniper->setup();
-                appSniper->draw(true);
-            } else if (currentState == STATE_SIGINT_LOG && appSigintLog) {
-                appSigintLog->setup();
-                appSigintLog->draw(true);
+            if (apps.size() > 0 && menuCursor >= 0 && menuCursor < apps.size()) {
+                currentAppIndex = menuCursor;
+                apps[currentAppIndex]->setup();
+                apps[currentAppIndex]->draw(true);
             }
         }
-    } else {
+    } else { // An app is currently active
         bool returnToMenu = false;
         
-        // Dispatch to appropriate app loop
-        switch (currentState) {
-            case STATE_DUMB_PIPE:
-                if (appDumbPipe) appDumbPipe->loop(returnToMenu);
-                break;
-            case STATE_SNIPER:
-                if (appSniper) appSniper->loop(returnToMenu);
-                break;
-            case STATE_SIGINT_LOG:
-                if (appSigintLog) appSigintLog->loop(returnToMenu);
-                break;
-            default:
-                break;
+        if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
+            apps[currentAppIndex]->loop(returnToMenu);
+        } else {
+            returnToMenu = true; // Failsafe
         }
         
         // Handle transition back to menu
         if (returnToMenu) {
-            currentState = STATE_MENU;
+            currentAppIndex = -1;
             needsMenuRedraw = true;
             drawMenu(true);
         }
@@ -495,10 +481,9 @@ void loop() {
                 }
             }
 
-            if (currentState == STATE_DUMB_PIPE && appDumbPipe) {
-                appDumbPipe->onIrReceived(hexCode, rawJson);
-            } else if (currentState == STATE_SIGINT_LOG && appSigintLog) {
-                appSigintLog->onIrReceived(hexCode, rawJson, rawVector, millis());
+            // Dispatch dynamic onIrReceived to the currently active app plugin
+            if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
+                apps[currentAppIndex]->onIrReceived(hexCode, rawJson, rawVector, millis());
             }
         }
         irrecv->resume();

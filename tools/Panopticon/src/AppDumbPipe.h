@@ -8,8 +8,9 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "Config.h"
+#include "AppInterface.h"
 
-class AppDumbPipe {
+class AppDumbPipe : public AppInterface {
 private:
     std::vector<String> logs;
     const int maxLogs = 8; // Restored to more lines for 2-line display
@@ -24,7 +25,11 @@ private:
 public:
     AppDumbPipe() {}
 
-    void init(IRsend* tx) {
+    virtual const char* getName() const override {
+        return "1. Dumb Pipe";
+    }
+
+    virtual void init(IRsend* tx) override {
         irsend = tx;
     }
 
@@ -34,7 +39,7 @@ public:
         hasPendingTx = true;
     }
 
-    void setup() {
+    virtual void setup() override {
         logs.clear();
         screenHidden = false;
         needsBackgroundRedraw = true;
@@ -56,7 +61,7 @@ public:
         }
     }
 
-    void draw(bool fullDraw = false) {
+    virtual void draw(bool fullDraw = false) override {
         if (screenHidden) {
             // No drawing updates when screen is effectively turned off (backlight 0)
             return;
@@ -87,7 +92,7 @@ public:
         }
     }
 
-    void loop(bool& returnToMenu) {
+    virtual void loop(bool& returnToMenu) override {
         if (M5.BtnB.wasReleased()) {
             if (screenHidden) {
                 M5.Display.setBrightness(128); // Ensure screen comes back on when returning to menu
@@ -130,7 +135,8 @@ public:
         }
     }
 
-    void onIrReceived(const String& hexCode, const String& rawJson) {
+    // Adapt signature to match AppInterface (ignoring rawVector/ts since Dumb Pipe just posts JSON)
+    virtual void onIrReceived(const String& hexCode, const String& rawJson, const std::vector<uint16_t>& rawVector, uint32_t ts) override {
         if (!hexCode.isEmpty() && !hexCode.startsWith("RAW_")) {
             int spaceIdx = hexCode.indexOf(' ');
             if (spaceIdx > 0) {

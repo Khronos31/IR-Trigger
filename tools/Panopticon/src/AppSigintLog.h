@@ -5,8 +5,9 @@
 #include <IRrecv.h>
 #include <IRsend.h>
 #include "Config.h"
+#include "AppInterface.h"
 
-class AppSigintLog {
+class AppSigintLog : public AppInterface {
 private:
     String latestCode = "";
     String currentLogFile = "";
@@ -20,11 +21,15 @@ public:
 
     AppSigintLog() {}
 
-    void init(IRsend* tx) {
+    virtual const char* getName() const override {
+        return "3. Sigint Log";
+    }
+
+    virtual void init(IRsend* tx) override {
         irsend = tx;
     }
 
-    void setup() {
+    virtual void setup() override {
         latestCode = "";
         latestRaw.clear();
         btnALongPressedHandled = false;
@@ -32,7 +37,7 @@ public:
         needsBackgroundRedraw = true;
     }
 
-    void draw(bool fullDraw = false) {
+    virtual void draw(bool fullDraw = false) override {
         if (fullDraw || needsBackgroundRedraw) {
             M5.Display.fillScreen(TFT_BLACK);
             M5.Display.setCursor(0, 5);
@@ -92,13 +97,13 @@ public:
         }
     }
 
-    void onIrReceived(const String& code, const String& rawJson, const std::vector<uint16_t>& rawVector, uint32_t ts) {
+    virtual void onIrReceived(const String& code, const String& rawJson, const std::vector<uint16_t>& rawVector, uint32_t ts) override {
         latestCode = code;
         latestRaw = rawVector;
         draw();
     }
 
-    void loop(bool& returnToMenu) {
+    virtual void loop(bool& returnToMenu) override {
         if (M5.BtnB.wasReleased()) {
             returnToMenu = true;
             return;

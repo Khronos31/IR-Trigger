@@ -3,8 +3,9 @@
 #include <vector>
 #include <IRsend.h>
 #include "Config.h"
+#include "AppInterface.h"
 
-class AppSniper {
+class AppSniper : public AppInterface {
 private:
     std::vector<uint16_t> loadedRaw;
     bool hasLoadedRaw = false;
@@ -15,18 +16,22 @@ private:
 public:
     AppSniper() {}
 
-    void init(IRsend* tx) {
+    virtual const char* getName() const override {
+        return "2. Sniper";
+    }
+
+    virtual void init(IRsend* tx) override {
         irsend = tx;
     }
 
-    void setup() {
+    virtual void setup() override {
         loadedRaw.clear();
         hasLoadedRaw = false;
         needsBackgroundRedraw = true;
         visualFeedbackEndTime = 0;
     }
 
-    void draw(bool fullDraw = false) {
+    virtual void draw(bool fullDraw = false) override {
         if (fullDraw || needsBackgroundRedraw) {
             M5.Display.fillScreen(TFT_BLACK);
             M5.Display.setCursor(0, 5);
@@ -56,7 +61,7 @@ public:
         needsBackgroundRedraw = true;
     }
 
-    void loop(bool& returnToMenu) {
+    virtual void loop(bool& returnToMenu) override {
         if (needsBackgroundRedraw && visualFeedbackEndTime == 0) {
             draw();
         }
