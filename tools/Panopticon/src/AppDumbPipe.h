@@ -58,10 +58,7 @@ public:
 
     void draw(bool fullDraw = false) {
         if (screenHidden) {
-            if (fullDraw || needsBackgroundRedraw) {
-                M5.Display.fillScreen(TFT_BLACK);
-                needsBackgroundRedraw = false;
-            }
+            // No drawing updates when screen is effectively turned off (backlight 0)
             return;
         }
         
@@ -92,14 +89,23 @@ public:
 
     void loop(bool& returnToMenu) {
         if (M5.BtnB.wasReleased()) {
+            if (screenHidden) {
+                M5.Display.setBrightness(128); // Ensure screen comes back on when returning to menu
+                screenHidden = false;
+            }
             returnToMenu = true;
             return;
         }
 
         if (M5.BtnA.wasPressed()) {
             screenHidden = !screenHidden;
-            needsBackgroundRedraw = true;
-            draw(true);
+            if (screenHidden) {
+                M5.Display.setBrightness(0); // Turn off backlight completely
+            } else {
+                M5.Display.setBrightness(128); // Turn backlight back on
+                needsBackgroundRedraw = true;
+                draw(true);
+            }
         }
 
         // TX Processing
