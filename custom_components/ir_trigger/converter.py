@@ -114,11 +114,14 @@ def code_to_raw(code: str) -> list[int]:
     bits = []
     try:
         val = int(hex_data, 16)
-        is_msb_first = (name == "SONY")
+        
+        # SONY and other standard protocols use MSB first encoding for their sendGeneric
+        # (IRremoteESP8266 matchGeneric(..., MSBfirst=true) equivalent representation)
+        is_msb_first = True
         
         for i in range(bit_length):
             if is_msb_first:
-                # MSB First
+                # MSB First: Shift from highest bit to lowest bit
                 bits.append((val >> (bit_length - 1 - i)) & 1)
             else:
                 # LSB First
@@ -227,8 +230,9 @@ def _decode_sony(raw: list[int], config: dict, protocol_name: str) -> str | None
 def _bits_to_hex(bits: list[int], protocol: str) -> str:
     """Convert bit list to hex string using IRremoteESP8266 logic."""
     val = 0
-    # SONY is MSB first, others are LSB first
-    is_msb_first = (protocol == "SONY")
+    # IRremoteESP8266 matchGeneric builds results->value assuming MSB first
+    # This aligns the resulting hex exactly with what IRrecvDumpV2 produces.
+    is_msb_first = True
     
     for i, b in enumerate(bits):
         if b:
