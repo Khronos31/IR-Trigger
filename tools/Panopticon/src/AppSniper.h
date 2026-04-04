@@ -1,17 +1,25 @@
 #pragma once
 #include <M5Unified.h>
+#include <vector>
+#include <IRsend.h>
 
 class AppSniper {
 private:
-    String loadedCommand = "";
+    std::vector<uint16_t> loadedRaw;
+    bool hasLoadedRaw = false;
     bool needsBackgroundRedraw = true;
     uint32_t visualFeedbackEndTime = 0;
+    IRsend irsend;
 
 public:
+    AppSniper() : irsend(9) {} // Defaulting to IR_TX_PIN (9), adjust if needed
+
     void setup() {
-        loadedCommand = "";
+        loadedRaw.clear();
+        hasLoadedRaw = false;
         needsBackgroundRedraw = true;
         visualFeedbackEndTime = 0;
+        irsend.begin();
     }
 
     void draw(bool fullDraw = false) {
@@ -34,21 +42,26 @@ public:
         M5.Display.setTextSize(2);
         M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
         M5.Display.println("CHAMBER:                    "); 
-        if (loadedCommand.isEmpty()) {
+        if (!hasLoadedRaw) {
              M5.Display.setTextColor(TFT_DARKGREEN, TFT_BLACK);
              M5.Display.println(" [ EMPTY ]                  ");
         } else {
              M5.Display.setTextColor(TFT_RED, TFT_BLACK);
-             M5.Display.println(" [" + loadedCommand + "]               ");
+             M5.Display.println(" [ LOADED ]                 ");
         }
     }
 
-    void loadSignal(const String& signal) {
-        loadedCommand = signal;
-        draw();
+    void loadSignalRaw(const std::vector<uint16_t>& raw) {
+        loadedRaw = raw;
+        hasLoadedRaw = true;
+        needsBackgroundRedraw = true;
     }
 
     void loop(bool& returnToMenu) {
+        if (needsBackgroundRedraw && visualFeedbackEndTime == 0) {
+            draw();
+        }
+
         if (M5.BtnB.wasReleased()) {
             returnToMenu = true;
             return;
@@ -61,9 +74,10 @@ public:
         }
 
         if (M5.BtnA.wasPressed()) {
-            if (!loadedCommand.isEmpty() && visualFeedbackEndTime == 0) {
-                Serial.printf("SNIPER FIRED: %s\n", loadedCommand.c_str());
-                loadedCommand = ""; 
+            if (hasLoadedRaw && visualFeedbackEndTime == 0) {
+                irsend.sendRaw(loadedRaw.data(), loadedRaw.size(), 38);
+                Serial.printf("SNIPER FIRED: %d pulses\n", loadedRaw.size());
+                hasLoadedRaw = false; 
                 
                 // Flash screen red and set timer
                 M5.Display.fillScreen(TFT_RED);

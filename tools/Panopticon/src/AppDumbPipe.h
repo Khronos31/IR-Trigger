@@ -8,8 +8,8 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-const uint16_t IR_TX_PIN = 46;
-const uint16_t IR_RX_PIN = 42;
+const uint16_t IR_TX_PIN = 9; //46;
+const uint16_t IR_RX_PIN = 10; //42;
 const char* WEBHOOK_URL = "http://192.168.1.130:8123/api/webhook/panopticon";
 
 class AppDumbPipe {
@@ -22,15 +22,17 @@ private:
     IRrecv irrecv;
     IRsend irsend;
     decode_results results;
-    AsyncWebServer server;
 
     std::vector<uint16_t> pendingTxRaw;
     bool hasPendingTx = false;
 
-    bool isServerStarted = false;
-
 public:
-    AppDumbPipe() : irrecv(IR_RX_PIN, 1024, 15, true), irsend(IR_TX_PIN), server(8080) {}
+    AppDumbPipe() : irrecv(IR_RX_PIN, 1024, 25, true), irsend(IR_TX_PIN) {}
+
+    void setPendingTx(const std::vector<uint16_t>& raw) {
+        pendingTxRaw = raw;
+        hasPendingTx = true;
+    }
 
     void setup() {
         logs.clear();
@@ -43,32 +45,7 @@ public:
         irrecv.enableIRIn();
         irsend.begin();
 
-        if (!isServerStarted) {
-            server.on("/tx", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, 
-                [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-                    if (index == 0) {
-                        JsonDocument doc;
-                        DeserializationError error = deserializeJson(doc, data, len);
-                        if (!error && doc.containsKey("raw")) {
-                            JsonArray rawArr = doc["raw"].as<JsonArray>();
-                            std::vector<uint16_t> tempRaw;
-                            tempRaw.reserve(rawArr.size());
-                            for (JsonVariant v : rawArr) {
-                                tempRaw.push_back(abs(v.as<int>())); 
-                            }
-                            this->pendingTxRaw = tempRaw;
-                            this->hasPendingTx = true;
-                        }
-                        request->send(200, "text/plain", "OK");
-                    }
-                }
-            );
-            server.begin();
-            isServerStarted = true;
-        }
-
         addLog("SYS: DUMB PIPE READY");
-        addLog("HTTP: Port 8080");
     }
 
     void addLog(const String& msg) {
@@ -136,13 +113,26 @@ public:
         // TX Processing
         if (hasPendingTx) {
             irsend.sendRaw(pendingTxRaw.data(), pendingTxRaw.size(), 38);
-            addLog("TX: " + String(pendingTxRaw.size()) + " pulses");
+            String txSnippet = "TX:[";
+            size_t maxTxItems = (pendingTxRaw.size() < 4) ? pendingTxRaw.size() : 4;
+            for (size_t i = 0; i < maxTxItems; i++) {
+                txSnippet += String(pendingTxRaw[i]);
+                if (i < 3 && i < pendingTxRaw.size() - 1) txSnippet += ",";
+            }
+            if (pendingTxRaw.size() > 4) txSnippet += "...]";
+            else txSnippet += "]";
+            addLog(txSnippet);
             hasPendingTx = false;
             draw();
         }
 
         // RX Processing
         if (irrecv.decode(&results)) {
+            if (results.rawlen < 10) {
+                irrecv.resume();
+                return;
+            }
+
             // Ignore noise (very short pulse arrays) to prevent OOM / continuous HTTP requests
             if (results.rawlen > 20) { 
                 String rawJson;
@@ -163,7 +153,17 @@ public:
                 int httpResponseCode = http.POST(payload);
                 http.end();
 
-                addLog("RX: " + String(results.rawlen - 1) + " pulses");
+                String rxSnippet = "RX:[";
+                uint16_t numPulses = results.rawlen - 1;
+                uint16_t maxRxItems = (numPulses < 4) ? numPulses : 4;
+                for (uint16_t i = 1; i <= maxRxItems; i++) {
+                    rxSnippet += String(results.rawbuf[i] * kRawTick);
+                    if (i < 4 && i < numPulses) rxSnippet += ",";
+                }
+                if (numPulses > 4) rxSnippet += "...]";
+                else rxSnippet += "]";
+                addLog(rxSnippet);
+
                 if (httpResponseCode > 0) {
                     addLog(" -> OK: HTTP " + String(httpResponseCode));
                 } else {
