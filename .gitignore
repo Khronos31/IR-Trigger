@@ -4,3 +4,5 @@ __pycache__/
 .aider*
 lua-remote-hub/
 IR-Trigger.yaml
+.pio/
+.vscode/
