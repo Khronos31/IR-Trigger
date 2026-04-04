@@ -63,6 +63,7 @@ api:
             carrier_frequency: 38kHz
             code: !lambda "return command;"
 ```
+※ 詳細は `tools/esphome/AtomS3.yaml` を参照してください。
 
 ---
 
