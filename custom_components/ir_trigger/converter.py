@@ -10,15 +10,6 @@ _LOGGER = logging.getLogger(__name__)
 TOLERANCE = 0.30 # Increased tolerance for hardware variance
 
 PROTOCOLS = {
-    "NEC": {
-        "leader_on": 9000,
-        "leader_off": 4500,
-        "bit_on": 560,
-        "bit0_off": 560,
-        "bit1_off": 1680,
-        "threshold": 1200, # If OFF > 1200us, it's bit 1
-        "bit_length": 32,
-    },
     "SWITCHBOT": {
         "leader_on": 9000,
         "leader_off": 4500,
@@ -27,6 +18,15 @@ PROTOCOLS = {
         "bit1_off": 2150,
         "threshold": 1400,
         "bit_length": 26,
+    },
+    "NEC": {
+        "leader_on": 9000,
+        "leader_off": 4500,
+        "bit_on": 560,
+        "bit0_off": 560,
+        "bit1_off": 1680,
+        "threshold": 1200, # If OFF > 1200us, it's bit 1
+        "bit_length": 32,
     },
     "AEHA": { # KADEN
         "leader_on": 3200,
