@@ -55,8 +55,15 @@ void drawMenu(bool fullDraw = false) {
 
 #include <WiFi.h>
 
-const char* ssid = "YOUR_SSID";
-const char* password = "YOUR_PASSWORD";
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#define WIFI_SSID "YOUR_SSID"
+#define WIFI_PASSWORD "YOUR_PASSWORD"
+#endif
+
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
 void setup() {
     auto cfg = M5.config();
