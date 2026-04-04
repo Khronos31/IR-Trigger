@@ -17,14 +17,16 @@ PROTOCOLS = {
         "bit0_off": 560,
         "bit1_off": 1680,
         "threshold": 1200, # If OFF > 1200us, it's bit 1
+        "bit_length": 32,
     },
-    "NEC-L": {
+    "SWITCHBOT": {
         "leader_on": 9000,
         "leader_off": 4500,
         "bit_on": 680,
         "bit0_off": 730,
         "bit1_off": 2150,
         "threshold": 1400,
+        "bit_length": 26,
     },
     "AEHA": { # KADEN
         "leader_on": 3200,
@@ -33,6 +35,7 @@ PROTOCOLS = {
         "bit0_off": 400,
         "bit1_off": 1200,
         "threshold": 800, # If OFF > 800us, it's bit 1
+        "bit_length": 48,
     },
     "SONY": {
         "leader_on": 2400,
@@ -41,6 +44,7 @@ PROTOCOLS = {
         "bit_on_1": 1200,
         "bit_off": 600,
         "threshold": 900, # If ON > 900us, it's bit 1
+        "bit_length": 12, # Base length, varies
     },
     "DAIKIN": {
         "leader_on": 4400,
@@ -93,12 +97,18 @@ def code_to_raw(code: str) -> list[int]:
         return []
 
     name, hex_data = parts[0], parts[1]
-    bit_length = int(parts[2]) if len(parts) >= 3 else len(hex_data) * 4
 
     if name not in PROTOCOLS:
         return []
 
     config = PROTOCOLS[name]
+    
+    if len(parts) >= 3:
+        bit_length = int(parts[2])
+    elif "bit_length" in config:
+        bit_length = config["bit_length"]
+    else:
+        bit_length = len(hex_data) * 4
     
     # Convert HEX to bits using IRremoteESP8266 logic
     bits = []
@@ -132,7 +142,7 @@ def code_to_raw(code: str) -> list[int]:
         raw.append(config["bit_on"])
         
         # 🛡️ NEC系特有のリピートコード付与
-        if name in ["NEC", "NEC-L"]:
+        if name in ["NEC", "SWITCHBOT"]:
             raw.append(40000) # 40ms Gap
             raw.append(config["leader_on"])
             raw.append(config["leader_off"] // 2)
@@ -171,7 +181,9 @@ def _decode_mark_space(raw: list[int], config: dict, protocol_name: str) -> str 
 
     if not bits: return None
     hex_str = _bits_to_hex(bits, protocol_name)
-    if len(bits) % 8 != 0:
+    
+    is_default_len = ("bit_length" in config and len(bits) == config["bit_length"])
+    if not is_default_len and len(bits) % 8 != 0:
         return f"{hex_str}-{len(bits)}"
     return hex_str
 
@@ -200,7 +212,9 @@ def _decode_sony(raw: list[int], config: dict, protocol_name: str) -> str | None
 
     if not bits: return None
     hex_str = _bits_to_hex(bits, protocol_name)
-    if len(bits) % 8 != 0:
+    
+    is_default_len = ("bit_length" in config and len(bits) == config["bit_length"])
+    if not is_default_len and len(bits) % 8 != 0:
         return f"{hex_str}-{len(bits)}"
     return hex_str
 
