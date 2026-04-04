@@ -34,11 +34,6 @@ public:
             M5.Display.setTextSize(2);
             M5.Display.println("[SNIPER]");
             M5.Display.println("-------------");
-            
-            M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
-            M5.Display.setCursor(0, M5.Display.height() - 15);
-            M5.Display.setTextSize(1);
-            M5.Display.println("BtnA_Short: FIRE | BtnB: < BACK");
             needsBackgroundRedraw = false;
         }
         

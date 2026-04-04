@@ -12,7 +12,7 @@
 class AppDumbPipe {
 private:
     std::vector<String> logs;
-    const int maxLogs = 6; // Restored to more lines for 2-line display
+    const int maxLogs = 8; // Restored to more lines for 2-line display
     bool screenHidden = false;
     bool needsBackgroundRedraw = true;
 
@@ -44,9 +44,10 @@ public:
 
     void addLog(const String& msg) {
         String logLine = msg;
-        // Truncate cleanly with "..." if the hex code is incredibly long (e.g. 88bit+ air conditioners)
-        if (logLine.length() > 30) {
-            logLine = logLine.substring(0, 24) + "...";
+        // Truncate in the middle with "..." if the hex code is incredibly long (e.g. 88bit+ air conditioners)
+        if (logLine.length() > 35) {
+            int len = logLine.length();
+            logLine = logLine.substring(0, 15) + "..." + logLine.substring(len - 17);
         }
         
         logs.push_back(logLine);
@@ -71,10 +72,6 @@ public:
             M5.Display.setTextSize(2);
             M5.Display.println("[DUMB PIPE]");
             M5.Display.println("-------------");
-            
-            M5.Display.setCursor(0, M5.Display.height() - 15);
-            M5.Display.setTextSize(1);
-            M5.Display.println("BtnA: Screen Toggle | BtnB: < BACK");
             needsBackgroundRedraw = false;
         }
         
@@ -85,10 +82,10 @@ public:
         for(size_t i = 0; i < maxLogs; i++) {
             if (i < logs.size()) {
                 String padded = logs[i];
-                while(padded.length() < 30) padded += " ";
+                while(padded.length() < 35) padded += " ";
                 M5.Display.println(padded);
             } else {
-                M5.Display.println("                              "); // 30 spaces
+                M5.Display.println("                                   "); // 35 spaces
             }
         }
     }
@@ -110,22 +107,11 @@ public:
             if (irsend) {
                 irsend->sendRaw(pendingTxRaw.data(), pendingTxRaw.size(), 38);
                 
-                if (!pendingTxCodeStr.isEmpty() && !pendingTxCodeStr.startsWith("RAW-")) {
-                    int delimIdx = pendingTxCodeStr.indexOf('-');
-                    if (delimIdx < 0) delimIdx = pendingTxCodeStr.indexOf(' ');
-                    
-                    if (delimIdx > 0) {
-                        String prefix = pendingTxCodeStr.substring(0, delimIdx);
-                        String hexPart = pendingTxCodeStr.substring(delimIdx + 1);
-                        
-                        addLog("TX: " + prefix);
-                        
-                        // Handle extremely long hex strings by splitting or truncating
-                        if (hexPart.length() > 16) {
-                            addLog("    " + hexPart.substring(0, 13) + "...");
-                        } else {
-                            addLog("    " + hexPart);
-                        }
+                if (!pendingTxCodeStr.isEmpty() && !pendingTxCodeStr.startsWith("RAW_")) {
+                    int spaceIdx = pendingTxCodeStr.indexOf(' ');
+                    if (spaceIdx > 0) {
+                        addLog("TX: " + pendingTxCodeStr.substring(0, spaceIdx));
+                        addLog("    " + pendingTxCodeStr.substring(spaceIdx + 1));
                     } else {
                         addLog("TX: " + pendingTxCodeStr);
                     }
@@ -139,26 +125,17 @@ public:
     }
 
     void onIrReceived(const String& hexCode, const String& rawJson) {
-        if (!hexCode.isEmpty() && !hexCode.startsWith("RAW-")) {
-            int delimIdx = hexCode.indexOf('-');
-            if (delimIdx < 0) delimIdx = hexCode.indexOf(' ');
-            
-            if (delimIdx > 0) {
-                String prefix = hexCode.substring(0, delimIdx);
-                String hexPart = hexCode.substring(delimIdx + 1);
-                
-                addLog("RX: " + prefix);
-                if (hexPart.length() > 16) {
-                    addLog("    " + hexPart.substring(0, 13) + "...");
-                } else {
-                    addLog("    " + hexPart);
-                }
+        if (!hexCode.isEmpty() && !hexCode.startsWith("RAW_")) {
+            int spaceIdx = hexCode.indexOf(' ');
+            if (spaceIdx > 0) {
+                addLog("RX: " + hexCode.substring(0, spaceIdx));
+                addLog("    " + hexCode.substring(spaceIdx + 1));
             } else {
                 addLog("RX: " + hexCode);
             }
         } else {
-            String countStr = hexCode.startsWith("RAW-") ? hexCode : "Unknown";
-            countStr.replace("RAW-", "");
+            String countStr = hexCode.startsWith("RAW_") ? hexCode : "Unknown";
+            countStr.replace("RAW_", "");
             addLog("RX: " + countStr + " pls");
         }
         draw();

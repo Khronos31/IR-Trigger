@@ -40,32 +40,55 @@ public:
             M5.Display.setTextSize(2);
             M5.Display.println("[SIGINT LOG]");
             M5.Display.println("-------------");
-            
-            M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
-            M5.Display.setCursor(0, M5.Display.height() - 25);
-            M5.Display.setTextSize(1);
-            M5.Display.println("BtnA_Short: FIRE | BtnA_Long: DEL");
-            M5.Display.println("BtnB: < BACK");
             needsBackgroundRedraw = false;
         }
         
-        M5.Display.setCursor(0, 45); // Start Y for variables
+        M5.Display.setCursor(0, 35); // Start Y slightly higher
         M5.Display.setTextSize(2);
         M5.Display.setTextColor(TFT_GREEN, TFT_BLACK); // Background overwriting
         M5.Display.println("Latest Signal:               "); 
+
         if (latestCode.isEmpty()) {
              M5.Display.setTextColor(TFT_DARKGREEN, TFT_BLACK);
              M5.Display.println(" [WAITING...]                ");
+             // Clear the second line just in case
+             M5.Display.println("                             ");
         } else {
              M5.Display.setTextColor(TFT_CYAN, TFT_BLACK);
-             // Truncate cleanly for 160x80 screen (size 2 allows ~13 chars per line, we fit around 12)
-             String displayStr = latestCode;
-             if (displayStr.length() > 24) {
-                 displayStr = displayStr.substring(0, 20) + "...";
+
+             String mainStr = latestCode;
+             String bitStr = "";
+
+             // Extract bit info (e.g., "(48bit)") if present at the end
+             int parenIdx = latestCode.lastIndexOf('(');
+             if (parenIdx > 0 && latestCode.endsWith(")")) {
+                 mainStr = latestCode.substring(0, parenIdx - 1); // remove the space before '('
+                 bitStr = latestCode.substring(parenIdx);
              }
-             // For text size 2 on a 160px width, anything over 13 chars will wrap to next line.
-             // We let it wrap naturally up to 2 lines, then it truncates.
-             M5.Display.println(" " + displayStr + "                ");
+
+             // Increase truncation limit by 4 characters as per user request (allow wider display)
+             if (mainStr.length() > 18) {
+                 int len = mainStr.length();
+                 mainStr = mainStr.substring(0, 9) + ".." + mainStr.substring(len - 7);
+             }
+             
+             // First line: Main HEX Code
+             String paddedMain = " " + mainStr;
+             while (paddedMain.length() < 19) paddedMain += " "; // Clear trailing garbage
+             M5.Display.println(paddedMain);
+
+             // Second line: Bit info (Right-aligned to match 1st line)
+             if (!bitStr.isEmpty()) {
+                 M5.Display.setTextColor(TFT_YELLOW, TFT_BLACK); // Highlight bit info
+                 // Pad with spaces on the left so that the total length is 24 characters, matching the first line
+                 String paddedBit = bitStr;
+                 while (paddedBit.length() < 19) {
+                     paddedBit = " " + paddedBit;
+                 }
+                 M5.Display.println(paddedBit);
+             } else {
+                 M5.Display.println("                   "); // 19 spaces to clear
+             }
         }
     }
 
