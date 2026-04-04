@@ -70,7 +70,7 @@ void enqueueWebhook(const String& payload) {
 }
 
 // Custom decoder for unknown NEC-like signals (varying bit lengths)
-String decode_custom_nec(const std::vector<uint16_t>& raw) {
+String decode_custom_switchbot(const std::vector<uint16_t>& raw) {
     // Basic NEC leader is ~9000us ON, ~4500us OFF.
     // Need at least leader (2) + a few bits (e.g. 10 bits = 20)
     if (raw.size() < 22) return "";
@@ -83,10 +83,10 @@ String decode_custom_nec(const std::vector<uint16_t>& raw) {
         return "";
     }
 
-    std::vector<uint8_t> bits;
-    bits.reserve(128);
+    uint64_t data = 0;
+    int bits_decoded = 0;
 
-    for (size_t i = 2; i < raw.size() - 1; i += 2) {
+    for (size_t i = 2; i < raw.size() - 1 && bits_decoded < 64; i += 2) {
         uint16_t mark = raw[i];
         uint16_t space = raw[i + 1];
 
@@ -106,30 +106,20 @@ String decode_custom_nec(const std::vector<uint16_t>& raw) {
         // Standard NEC: bit0 ~560, bit1 ~1680. SwitchBot: bit0 ~730, bit1 ~2150.
         // Threshold around 1400us cleanly separates 0 and 1 for both.
         if (space < 1400) {
-            bits.push_back(0); // Bit 0
+            // Bit 0: Do nothing (or explicitly mask 0)
+            data &= ~(1ULL << bits_decoded);
         } else {
-            bits.push_back(1); // Bit 1
+            // Bit 1: Set the bit at bits_decoded (LSB First globally, matching IRremoteESP8266 logic)
+            data |= (1ULL << bits_decoded);
         }
+        bits_decoded++;
     }
 
-    // Only return if we decoded a reasonable amount of bits (e.g. 16 or more)
-    if (bits.size() >= 16) {
-        // Convert to HEX string (LSB First per 8-bit chunk), matching HA converter.py logic
-        String hexStr = "0x";
-        for (size_t i = 0; i < bits.size(); i += 8) {
-            uint8_t byte_val = 0;
-            for (size_t b_idx = 0; b_idx < 8 && (i + b_idx) < bits.size(); b_idx++) {
-                if (bits[i + b_idx] == 1) {
-                    byte_val |= (1 << b_idx);
-                }
-            }
-            char hexByte[3];
-            snprintf(hexByte, sizeof(hexByte), "%02X", byte_val);
-            hexStr += String(hexByte);
-        }
-
-        char buf[128];
-        snprintf(buf, sizeof(buf), "NEC-L %s (%dbit)", hexStr.c_str(), bits.size());
+    // Only return if we decoded a reasonable amount of bits (e.g. 16 to 64)
+    if (bits_decoded >= 16) {
+        char buf[64];
+        // Print as a single global hex string (IRremoteESP8266 standard)
+        snprintf(buf, sizeof(buf), "SWITCHBOT 0x%llX (%dbit)", data, bits_decoded);
         return String(buf);
     }
     
@@ -283,12 +273,40 @@ void setup() {
             tempRaw.push_back(abs(v.as<int>()));
         }
 
+        // Handle optional "code" parameter for beautiful UI display (e.g., "SWITCHBOT-12345678")
+        String displayCode = "";
+        if (json.as<JsonObject>().containsKey("code")) {
+            String incomingCode = json["code"].as<String>();
+            int hyphenIdx = incomingCode.indexOf('-');
+            if (hyphenIdx > 0) {
+                String protocol = incomingCode.substring(0, hyphenIdx);
+                String hexVal = incomingCode.substring(hyphenIdx + 1);
+                displayCode = protocol + " 0x" + hexVal;
+            } else {
+                displayCode = incomingCode; // Fallback
+            }
+        }
+
                         if (currentState == STATE_DUMB_PIPE && appDumbPipe) {
-                            appDumbPipe->setPendingTx(tempRaw);
+                            appDumbPipe->setPendingTx(tempRaw, displayCode);
                             request->send(200, "text/plain", "OK: Sent to Dumb Pipe");
                         } else if (currentState == STATE_SNIPER && appSniper) {
                             appSniper->loadSignalRaw(tempRaw);
-                            request->send(200, "text/plain", "OK: Loaded into Sniper. POST triggered in main loop.");
+                            
+                            // Safe async webhook post via global queue
+                            JsonDocument docOut;
+                            docOut["Device"] = "Panopticon_Sniper";
+                            docOut["Button"] = "Target_Locked";
+                            JsonArray rawArrayOut = docOut["raw"].to<JsonArray>();
+                            for (size_t i = 0; i < tempRaw.size(); i++) {
+                                rawArrayOut.add(tempRaw[i]);
+                            }
+                            
+                            String payload;
+                            serializeJson(docOut, payload);
+                            enqueueWebhook(payload);
+
+                            request->send(200, "text/plain", "OK: Loaded into Sniper");
                         } else {
                             request->send(400, "text/plain", "App not ready to receive TX");
                         }
@@ -399,7 +417,7 @@ void loop() {
             if (results.decode_type != decode_type_t::UNKNOWN) {
                 hexCode = typeToString(results.decode_type) + " 0x" + uint64ToString(results.value, 16);
             } else {
-                hexCode = decode_custom_nec(rawVector);
+                hexCode = decode_custom_switchbot(rawVector);
                 if (hexCode.isEmpty()) {
                     hexCode = "RAW_" + String(results.rawlen - 1);
                 }

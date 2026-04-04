@@ -41,14 +41,12 @@ CONF_POLL_INTERVAL = "poll_interval"
 CONF_WEBHOOK_ID = "webhook_id"
 
 # TX Types
-TX_TYPE_USB_AD00020P = "usb_ad00020p"
 TX_TYPE_ESPHOME = "esphome"
 TX_TYPE_WEBHOOK = "webhook"
 TX_TYPE_NATURE_REMO = "nature_remo"
 TX_TYPE_MOCK = "mock"
 
 # RX Types
-RX_TYPE_USB_AD00020P = "usb_ad00020p"
 RX_TYPE_WEBHOOK = "webhook"
 RX_TYPE_NATURE_REMO = "nature_remo"
 

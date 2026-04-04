@@ -68,9 +68,9 @@ def raw_to_code(raw: list[int]) -> str:
     # Try standard protocols with leader codes
     for name, config in PROTOCOLS.items():
         if name == "SONY":
-            code = _decode_sony(raw, config)
+            code = _decode_sony(raw, config, name)
         else:
-            code = _decode_mark_space(raw, config)
+            code = _decode_mark_space(raw, config, name)
         
         if code:
             return f"{name}_{code}"
@@ -100,18 +100,21 @@ def code_to_raw(code: str) -> list[int]:
 
     config = PROTOCOLS[name]
     
-    # Convert HEX to bits (LSB First as we did in _bits_to_hex)
+    # Convert HEX to bits using IRremoteESP8266 logic
     bits = []
     try:
-        for i in range(0, len(hex_data), 2):
-            byte_val = int(hex_data[i:i+2], 16)
-            for b_idx in range(8):
-                bits.append((byte_val >> b_idx) & 1)
+        val = int(hex_data, 16)
+        is_msb_first = (name == "SONY")
+        
+        for i in range(bit_length):
+            if is_msb_first:
+                # MSB First
+                bits.append((val >> (bit_length - 1 - i)) & 1)
+            else:
+                # LSB First
+                bits.append((val >> i) & 1)
     except ValueError:
         return []
-
-    # 指定されたビット長で切り詰める（幻のゼロパルスを消去）
-    bits = bits[:bit_length]
 
     # Construct RAW array
     raw = [config["leader_on"], config["leader_off"]]
@@ -141,7 +144,7 @@ def _is_match(actual: int, target: int) -> bool:
     """Check if actual pulse width is within tolerance of target."""
     return target * (1 - TOLERANCE) <= actual <= target * (1 + TOLERANCE)
 
-def _decode_mark_space(raw: list[int], config: dict) -> str | None:
+def _decode_mark_space(raw: list[int], config: dict, protocol_name: str) -> str | None:
     """Generic decoder for Mark/Space protocols (NEC, AEHA, DAIKIN)."""
     if len(raw) < 10: return None # Very short signal
     
@@ -167,12 +170,12 @@ def _decode_mark_space(raw: list[int], config: dict) -> str | None:
             bits.append(0)
 
     if not bits: return None
-    hex_str = _bits_to_hex(bits)
+    hex_str = _bits_to_hex(bits, protocol_name)
     if len(bits) % 8 != 0:
         return f"{hex_str}_{len(bits)}"
     return hex_str
 
-def _decode_sony(raw: list[int], config: dict) -> str | None:
+def _decode_sony(raw: list[int], config: dict, protocol_name: str) -> str | None:
     """SONY protocol decoder (Pulse width modulation on 'ON' state)."""
     if len(raw) < 10: return None
     
@@ -196,20 +199,28 @@ def _decode_sony(raw: list[int], config: dict) -> str | None:
             bits.append(0)
 
     if not bits: return None
-    hex_str = _bits_to_hex(bits)
+    hex_str = _bits_to_hex(bits, protocol_name)
     if len(bits) % 8 != 0:
         return f"{hex_str}_{len(bits)}"
     return hex_str
 
-def _bits_to_hex(bits: list[int]) -> str:
-    """Convert bit list to hex string (LSB First)."""
-    hex_str = ""
-    # Process bits in 8-bit chunks
-    for i in range(0, len(bits), 8):
-        chunk = bits[i:i+8]
-        byte_val = 0
-        for b_idx, b_val in enumerate(chunk):
-            if b_val:
-                byte_val |= (1 << b_idx)
-        hex_str += f"{byte_val:02X}"
-    return hex_str
+def _bits_to_hex(bits: list[int], protocol: str) -> str:
+    """Convert bit list to hex string using IRremoteESP8266 logic."""
+    val = 0
+    # SONY is MSB first, others are LSB first
+    is_msb_first = (protocol == "SONY")
+    
+    for i, b in enumerate(bits):
+        if b:
+            if is_msb_first:
+                # MSB First: first bit is the most significant
+                val |= (1 << (len(bits) - 1 - i))
+            else:
+                # LSB First: first bit is the least significant
+                val |= (1 << i)
+                
+    # Calculate required hex digits (4 bits per hex digit)
+    # Minimum 2 digits
+    digits = max(2, (len(bits) + 3) // 4)
+    # Ensure it's formatted to the correct width
+    return f"{val:0{digits}X}"
