@@ -69,6 +69,7 @@ void drawMenu(bool fullDraw = false) {
 #include <ESPAsyncWebServer.h>
 #include <AsyncJson.h>
 #include <ArduinoJson.h>
+#include <IRutils.h>
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
@@ -88,6 +89,13 @@ void setup() {
     M5.Display.setTextSize(2);
     M5.Display.println(" Connecting Wi-Fi...");
     
+    // Throw away initial unstable button states (debounce)
+    for(int i=0; i<10; i++) {
+        M5.update();
+        delay(10);
+    }
+
+    WiFi.setHostname("Panopticon");
     WiFi.begin(ssid, password);
     unsigned long lastPrintTime = 0;
     while (WiFi.status() != WL_CONNECTED) {
@@ -127,15 +135,36 @@ void setup() {
             tempRaw.push_back(abs(v.as<int>()));
         }
 
-        if (currentState == STATE_DUMB_PIPE) {
-            appDumbPipe.setPendingTx(tempRaw);
-            request->send(200, "text/plain", "OK: Sent to Dumb Pipe");
-        } else if (currentState == STATE_SNIPER) {
-            appSniper.loadSignalRaw(tempRaw);
-            request->send(200, "text/plain", "OK: Loaded into Sniper");
-        } else {
-            request->send(400, "text/plain", "App not ready to receive TX");
-        }
+                        if (currentState == STATE_DUMB_PIPE) {
+                            appDumbPipe.setPendingTx(tempRaw);
+                            request->send(200, "text/plain", "OK: Sent to Dumb Pipe");
+                        } else if (currentState == STATE_SNIPER) {
+                            appSniper.loadSignalRaw(tempRaw);
+                            
+                            // Send "Target_Locked" event to HA with raw array for converter compatibility
+                            HTTPClient http;
+                            http.begin(WEBHOOK_URL);
+                            http.setTimeout(HTTP_TIMEOUT_MS);
+                            http.addHeader("Content-Type", "application/json");
+
+                            JsonDocument docOut;
+                            docOut["Device"] = "Panopticon_Sniper";
+                            docOut["Button"] = "Target_Locked";
+                            
+                            JsonArray rawArrayOut = docOut["raw"].to<JsonArray>();
+                            for (size_t i = 0; i < tempRaw.size(); i++) {
+                                rawArrayOut.add(tempRaw[i]);
+                            }
+                            
+                            String payload;
+                            serializeJson(docOut, payload);
+                            http.POST(payload);
+                            http.end();
+
+                            request->send(200, "text/plain", "OK: Loaded into Sniper");
+                        } else {
+                            request->send(400, "text/plain", "App not ready to receive TX");
+                        }
     });
 
     server.addHandler(handler);
@@ -214,5 +243,48 @@ void loop() {
             needsMenuRedraw = true;
             drawMenu(true);
         }
+    }
+
+    // --- Centralized IR Receive & Push ---
+    IRrecv* activeReceiver = nullptr;
+    decode_results* activeResults = nullptr;
+
+    if (currentState == STATE_DUMB_PIPE) {
+        activeReceiver = &appDumbPipe.irrecv;
+        activeResults = &appDumbPipe.results;
+    } else if (currentState == STATE_SIGINT_LOG) {
+        activeReceiver = &appSigintLog.irrecv;
+        activeResults = &appSigintLog.results;
+    }
+
+    if (activeReceiver && activeReceiver->decode(activeResults)) {
+        if (activeResults->rawlen >= 10 && activeResults->rawlen <= 1024) { 
+            String rawJson;
+            rawJson.reserve(activeResults->rawlen * 6 + 10);
+            rawJson = "[";
+            
+            std::vector<uint16_t> rawVector;
+            rawVector.reserve(activeResults->rawlen - 1);
+            
+            for (uint16_t i = 1; i < activeResults->rawlen; i++) {
+                uint16_t us = activeResults->rawbuf[i] * kRawTick;
+                rawJson += String(us);
+                rawVector.push_back(us);
+                if (i < activeResults->rawlen - 1) rawJson += ",";
+            }
+            rawJson += "]";
+
+            String hexCode = resultToHumanReadableBasic(activeResults);
+            if (hexCode.isEmpty() || hexCode == "UNKNOWN") {
+                 hexCode = "RAW_" + String(activeResults->rawlen - 1);
+            }
+
+            if (currentState == STATE_DUMB_PIPE) {
+                appDumbPipe.onIrReceived(hexCode, rawJson);
+            } else if (currentState == STATE_SIGINT_LOG) {
+                appSigintLog.onIrReceived(hexCode, rawJson, rawVector, millis());
+            }
+        }
+        activeReceiver->resume();
     }
 }

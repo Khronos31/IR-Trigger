@@ -1,5 +1,10 @@
 #pragma once
 #include <M5Unified.h>
+#include <vector>
+#include <IRremoteESP8266.h>
+#include <IRrecv.h>
+#include <IRsend.h>
+#include "Config.h"
 
 class AppSigintLog {
 private:
@@ -10,11 +15,24 @@ private:
     bool needsBackgroundRedraw = true;
 
 public:
+    IRrecv irrecv;
+    IRsend irsend;
+    decode_results results;
+    std::vector<uint16_t> latestRaw;
+
+    AppSigintLog() : irrecv(IR_RX_PIN, 1024, 25, true), irsend(IR_TX_PIN) {}
+
     void setup() {
         latestCode = "";
+        latestRaw.clear();
         btnALongPressedHandled = false;
         visualFeedbackEndTime = 0;
         needsBackgroundRedraw = true;
+
+        pinMode(IR_RX_PIN, INPUT_PULLUP);
+        delay(50);
+        irrecv.enableIRIn();
+        irsend.begin();
     }
 
     void draw(bool fullDraw = false) {
@@ -47,9 +65,9 @@ public:
         }
     }
 
-    void onIrReceived(const String& code, const String& rawArray, uint32_t ts) {
+    void onIrReceived(const String& code, const String& rawJson, const std::vector<uint16_t>& rawVector, uint32_t ts) {
         latestCode = code;
-        String jsonLog = "{\"code\":\"" + code + "\", \"raw\":[" + rawArray + "], \"ts\":" + String(ts) + "}\n";
+        latestRaw = rawVector;
         draw();
     }
 
@@ -78,7 +96,8 @@ public:
         // Handle Short Press (Fire Latest)
         else if (M5.BtnA.wasReleased()) {
              if (!btnALongPressedHandled) {
-                 if (!latestCode.isEmpty()) {
+                 if (!latestCode.isEmpty() && latestRaw.size() > 0) {
+                     irsend.sendRaw(latestRaw.data(), latestRaw.size(), 38);
                      Serial.printf("SIGINT FIRED: %s\n", latestCode.c_str());
                      M5.Display.fillCircle(M5.Display.width() - 10, 10, 5, TFT_CYAN);
                      visualFeedbackEndTime = millis() + 50;

@@ -7,10 +7,7 @@
 #include <ESPAsyncWebServer.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-
-const uint16_t IR_TX_PIN = 9; //46;
-const uint16_t IR_RX_PIN = 10; //42;
-const char* WEBHOOK_URL = "http://192.168.1.130:8123/api/webhook/panopticon";
+#include "Config.h"
 
 class AppDumbPipe {
 private:
@@ -19,9 +16,13 @@ private:
     bool screenHidden = false;
     bool needsBackgroundRedraw = true;
 
+public:
+    // Make irrecv/irsend public temporarily for main.cpp to access them
     IRrecv irrecv;
     IRsend irsend;
     decode_results results;
+
+private:
 
     std::vector<uint16_t> pendingTxRaw;
     bool hasPendingTx = false;
@@ -41,6 +42,7 @@ public:
         
         // Stabilize floating RX pin to prevent infinite dummy interrupt crashes
         pinMode(IR_RX_PIN, INPUT_PULLUP);
+        delay(50); // Give the pullup time to stabilize before attaching interrupts
         
         irrecv.enableIRIn();
         irsend.begin();
@@ -126,52 +128,31 @@ public:
             draw();
         }
 
-        // RX Processing
-        if (irrecv.decode(&results)) {
-            if (results.rawlen < 10) {
-                irrecv.resume();
-                return;
-            }
+    }
 
-            // Ignore noise (very short pulse arrays) to prevent OOM / continuous HTTP requests
-            if (results.rawlen > 20) { 
-                String rawJson;
-                rawJson.reserve(results.rawlen * 6 + 10); // Prevent heap fragmentation (OOM)
-                rawJson = "[";
-                for (uint16_t i = 1; i < results.rawlen; i++) {
-                    rawJson += String(results.rawbuf[i] * kRawTick);
-                    if (i < results.rawlen - 1) rawJson += ",";
-                }
-                rawJson += "]";
+    void onIrReceived(const String& hexCode, const String& rawJson) {
+        // Create snippet for display (e.g. RX:[9000,4500...])
+        String rxSnippet = "RX:";
+        int snippetLen = (rawJson.length() > 20) ? 20 : rawJson.length();
+        rxSnippet += rawJson.substring(0, snippetLen);
+        if (rawJson.length() > 20) rxSnippet += "...]";
 
-                // Post to HA Webhook securely
-                HTTPClient http;
-                http.begin(WEBHOOK_URL);
-                http.addHeader("Content-Type", "application/json");
-                
-                String payload = "{\"raw\":" + rawJson + "}";
-                int httpResponseCode = http.POST(payload);
-                http.end();
+        // Post to HA Webhook securely
+        HTTPClient http;
+        http.begin(WEBHOOK_URL);
+        http.setTimeout(HTTP_TIMEOUT_MS);
+        http.addHeader("Content-Type", "application/json");
+        
+        String payload = "{\"raw\":" + rawJson + "}";
+        int httpResponseCode = http.POST(payload);
+        http.end();
 
-                String rxSnippet = "RX:[";
-                uint16_t numPulses = results.rawlen - 1;
-                uint16_t maxRxItems = (numPulses < 4) ? numPulses : 4;
-                for (uint16_t i = 1; i <= maxRxItems; i++) {
-                    rxSnippet += String(results.rawbuf[i] * kRawTick);
-                    if (i < 4 && i < numPulses) rxSnippet += ",";
-                }
-                if (numPulses > 4) rxSnippet += "...]";
-                else rxSnippet += "]";
-                addLog(rxSnippet);
-
-                if (httpResponseCode > 0) {
-                    addLog(" -> OK: HTTP " + String(httpResponseCode));
-                } else {
-                    addLog(" -> ERR: " + http.errorToString(httpResponseCode));
-                }
-                draw();
-            }
-            irrecv.resume();
+        addLog(rxSnippet);
+        if (httpResponseCode > 0) {
+            addLog(" -> OK: HTTP " + String(httpResponseCode));
+        } else {
+            addLog(" -> ERR: " + http.errorToString(httpResponseCode));
         }
+        draw();
     }
 };

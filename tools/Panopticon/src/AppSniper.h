@@ -2,6 +2,7 @@
 #include <M5Unified.h>
 #include <vector>
 #include <IRsend.h>
+#include "Config.h"
 
 class AppSniper {
 private:
@@ -12,7 +13,7 @@ private:
     IRsend irsend;
 
 public:
-    AppSniper() : irsend(9) {} // Defaulting to IR_TX_PIN (9), adjust if needed
+    AppSniper() : irsend(IR_TX_PIN) {}
 
     void setup() {
         loadedRaw.clear();
