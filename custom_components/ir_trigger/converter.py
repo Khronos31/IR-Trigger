@@ -180,9 +180,17 @@ def _decode_mark_space(raw: list[int], config: dict, protocol_name: str) -> str 
             bits.append(0)
 
     if not bits: return None
-    hex_str = _bits_to_hex(bits, protocol_name)
     
     is_default_len = ("bit_length" in config and len(bits) == config["bit_length"])
+    
+    # Require strict length match for specific protocols like SWITCHBOT
+    if "bit_length" in config and not is_default_len:
+        # Currently only SWITCHBOT requires strict length matching, to avoid colliding with NEC
+        if protocol_name == "SWITCHBOT":
+            return None
+            
+    hex_str = _bits_to_hex(bits, protocol_name)
+    
     if not is_default_len and len(bits) % 8 != 0:
         return f"{hex_str}-{len(bits)}"
     return hex_str
