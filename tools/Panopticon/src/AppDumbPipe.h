@@ -16,10 +16,36 @@ private:
     bool screenHidden = false;
     bool needsBackgroundRedraw = true;
 
-private:
     IRsend* irsend = nullptr;
     std::vector<uint16_t> pendingTxRaw;
     bool hasPendingTx = false;
+
+    QueueHandle_t webhookQueue = nullptr;
+
+    static void webhookTask(void* pvParameters) {
+        QueueHandle_t queue = (QueueHandle_t)pvParameters;
+        String* payloadPtr;
+
+        while (true) {
+            if (xQueueReceive(queue, &payloadPtr, portMAX_DELAY) == pdTRUE) {
+                if (payloadPtr) {
+                    HTTPClient http;
+                    http.begin(WEBHOOK_URL);
+                    http.setTimeout(HTTP_TIMEOUT_MS);
+                    http.addHeader("Content-Type", "application/json");
+
+                    int httpResponseCode = http.POST(*payloadPtr);
+                    http.end();
+
+                    if (httpResponseCode <= 0) {
+                        Serial.printf("Async Webhook POST ERR: %s\n", http.errorToString(httpResponseCode).c_str());
+                    }
+
+                    delete payloadPtr; // Free memory!
+                }
+            }
+        }
+    }
 
 public:
     AppDumbPipe() {}
@@ -37,6 +63,16 @@ public:
         logs.clear();
         screenHidden = false;
         needsBackgroundRedraw = true;
+
+        if (webhookQueue == nullptr) {
+            webhookQueue = xQueueCreate(10, sizeof(String*));
+            if (webhookQueue != nullptr) {
+                // Pin task to Core 0 (Network/Protocol Core) to free up Core 1 (UI/Arduino Core)
+                xTaskCreatePinnedToCore(
+                    webhookTask, "WebhookTask", 4096, (void*)webhookQueue, 1, NULL, 0
+                );
+            }
+        }
         
         addLog("SYS: DUMB PIPE READY");
     }
@@ -130,22 +166,18 @@ public:
         rxSnippet += rawJson.substring(0, snippetLen);
         if (rawJson.length() > 20) rxSnippet += "...]";
 
-        // Post to HA Webhook securely
-        HTTPClient http;
-        http.begin(WEBHOOK_URL);
-        http.setTimeout(HTTP_TIMEOUT_MS);
-        http.addHeader("Content-Type", "application/json");
-        
-        String payload = "{\"raw\":" + rawJson + "}";
-        int httpResponseCode = http.POST(payload);
-        http.end();
-
         addLog(rxSnippet);
-        if (httpResponseCode > 0) {
-            addLog(" -> OK: HTTP " + String(httpResponseCode));
-        } else {
-            addLog(" -> ERR: " + http.errorToString(httpResponseCode));
-        }
         draw();
+
+        // Async Post to HA Webhook
+        if (webhookQueue != nullptr) {
+            String* payloadPtr = new String("{\"raw\":" + rawJson + "}");
+            if (xQueueSend(webhookQueue, &payloadPtr, 0) != pdTRUE) {
+                // Queue full
+                delete payloadPtr;
+                addLog(" -> ERR: Queue Full");
+                draw();
+            }
+        }
     }
 };

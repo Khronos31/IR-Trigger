@@ -2,6 +2,8 @@
 #include <M5Unified.h>
 #include <vector>
 #include <IRsend.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 #include "Config.h"
 
 class AppSniper {
@@ -11,6 +13,8 @@ private:
     bool needsBackgroundRedraw = true;
     uint32_t visualFeedbackEndTime = 0;
     IRsend* irsend = nullptr;
+
+    bool needsTargetLockedPost = false;
 
 public:
     AppSniper() {}
@@ -24,6 +28,7 @@ public:
         hasLoadedRaw = false;
         needsBackgroundRedraw = true;
         visualFeedbackEndTime = 0;
+        needsTargetLockedPost = false;
     }
 
     void draw(bool fullDraw = false) {
@@ -59,9 +64,40 @@ public:
         loadedRaw = raw;
         hasLoadedRaw = true;
         needsBackgroundRedraw = true;
+        needsTargetLockedPost = true; // Delegate HTTP POST to main loop
     }
 
     void loop(bool& returnToMenu) {
+        if (needsTargetLockedPost && hasLoadedRaw) {
+            needsTargetLockedPost = false;
+            
+            // Send "Target_Locked" event to HA with raw array for converter compatibility
+            HTTPClient http;
+            http.begin(WEBHOOK_URL);
+            http.setTimeout(HTTP_TIMEOUT_MS);
+            http.addHeader("Content-Type", "application/json");
+
+            JsonDocument docOut;
+            docOut["Device"] = "Panopticon_Sniper";
+            docOut["Button"] = "Target_Locked";
+            
+            JsonArray rawArrayOut = docOut["raw"].to<JsonArray>();
+            for (size_t i = 0; i < loadedRaw.size(); i++) {
+                rawArrayOut.add(loadedRaw[i]);
+            }
+            
+            String payload;
+            serializeJson(docOut, payload);
+            int httpResponseCode = http.POST(payload);
+            http.end();
+
+            if (httpResponseCode > 0) {
+                Serial.printf("Target Locked POST OK: %d\n", httpResponseCode);
+            } else {
+                Serial.printf("Target Locked POST ERR: %s\n", http.errorToString(httpResponseCode).c_str());
+            }
+        }
+
         if (needsBackgroundRedraw && visualFeedbackEndTime == 0) {
             draw();
         }

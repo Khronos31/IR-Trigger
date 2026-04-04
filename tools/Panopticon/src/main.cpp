@@ -30,6 +30,112 @@ IRrecv* irrecv = nullptr;
 IRsend* irsend = nullptr;
 decode_results results;
 
+// Global Webhook Queue (Producer-Consumer)
+QueueHandle_t globalWebhookQueue = nullptr;
+
+void globalWebhookTask(void* pvParameters) {
+    QueueHandle_t queue = (QueueHandle_t)pvParameters;
+    String* payloadPtr;
+
+    while (true) {
+        if (xQueueReceive(queue, &payloadPtr, portMAX_DELAY) == pdTRUE) {
+            if (payloadPtr) {
+                HTTPClient http;
+                http.begin(WEBHOOK_URL);
+                http.setTimeout(HTTP_TIMEOUT_MS);
+                http.addHeader("Content-Type", "application/json");
+
+                int httpResponseCode = http.POST(*payloadPtr);
+                http.end();
+
+                if (httpResponseCode <= 0) {
+                    Serial.printf("Async Webhook POST ERR: %s\n", http.errorToString(httpResponseCode).c_str());
+                }
+
+                delete payloadPtr; // Free memory!
+            }
+        }
+    }
+}
+
+// Helper: Safely enqueue a webhook payload
+void enqueueWebhook(const String& payload) {
+    if (globalWebhookQueue != nullptr) {
+        String* payloadPtr = new String(payload);
+        if (xQueueSend(globalWebhookQueue, &payloadPtr, 0) != pdTRUE) {
+            delete payloadPtr; // Queue full
+            Serial.println("Async Webhook POST ERR: Queue Full");
+        }
+    }
+}
+
+// Custom decoder for unknown NEC-like signals (varying bit lengths)
+String decode_custom_nec(const std::vector<uint16_t>& raw) {
+    // Basic NEC leader is ~9000us ON, ~4500us OFF.
+    // Need at least leader (2) + a few bits (e.g. 10 bits = 20)
+    if (raw.size() < 22) return "";
+
+    auto check_tolerance = [](uint16_t val, uint16_t expected) {
+        return (val >= expected * 0.7) && (val <= expected * 1.3);
+    };
+
+    if (!check_tolerance(raw[0], 9000) || !check_tolerance(raw[1], 4500)) {
+        return "";
+    }
+
+    std::vector<uint8_t> bits;
+    bits.reserve(128);
+
+    for (size_t i = 2; i < raw.size() - 1; i += 2) {
+        uint16_t mark = raw[i];
+        uint16_t space = raw[i + 1];
+
+        // Standard NEC is ~560us, SwitchBot (NEC-L) is ~680us. 
+        // We tolerate anything from 300us to 1000us as a valid mark.
+        if (mark < 300 || mark > 1000) {
+            break; // Stop at first invalid mark
+        }
+
+        // Extremely long space indicates gap/repeat code (end of data)
+        if (space > 5000) {
+            // In typical NEC, the last mark before the gap is just a stop bit, not data.
+            break;
+        }
+
+        // Determine bit based on space length threshold (typical threshold is ~1200us-1500us)
+        // Standard NEC: bit0 ~560, bit1 ~1680. SwitchBot: bit0 ~730, bit1 ~2150.
+        // Threshold around 1400us cleanly separates 0 and 1 for both.
+        if (space < 1400) {
+            bits.push_back(0); // Bit 0
+        } else {
+            bits.push_back(1); // Bit 1
+        }
+    }
+
+    // Only return if we decoded a reasonable amount of bits (e.g. 16 or more)
+    if (bits.size() >= 16) {
+        // Convert to HEX string (LSB First per 8-bit chunk), matching HA converter.py logic
+        String hexStr = "0x";
+        for (size_t i = 0; i < bits.size(); i += 8) {
+            uint8_t byte_val = 0;
+            for (size_t b_idx = 0; b_idx < 8 && (i + b_idx) < bits.size(); b_idx++) {
+                if (bits[i + b_idx] == 1) {
+                    byte_val |= (1 << b_idx);
+                }
+            }
+            char hexByte[3];
+            snprintf(hexByte, sizeof(hexByte), "%02X", byte_val);
+            hexStr += String(hexByte);
+        }
+
+        char buf[128];
+        snprintf(buf, sizeof(buf), "NEC-L %s (%dbit)", hexStr.c_str(), bits.size());
+        return String(buf);
+    }
+    
+    return "";
+}
+
 // Instantiate Apps
 AppDumbPipe* appDumbPipe = nullptr;
 AppSniper* appSniper = nullptr;
@@ -106,12 +212,25 @@ void setup() {
         delay(10);
     }
 
+    // Initialize Global Webhook Queue and Task
+    globalWebhookQueue = xQueueCreate(10, sizeof(String*));
+    if (globalWebhookQueue != nullptr) {
+        // Pin task to Core 0 (Network/Protocol Core) to free up Core 1 (UI/Arduino Core)
+        xTaskCreatePinnedToCore(
+            globalWebhookTask, "WebhookTask", 4096, (void*)globalWebhookQueue, 1, NULL, 0
+        );
+    }
+
     // Initialize IR hardware centrally with strict stability sequence
     pinMode(IR_RX_PIN, INPUT_PULLUP);
     delay(200); // Completely stabilize physical pin voltage before allowing interrupts
 
     irrecv = new IRrecv(IR_RX_PIN, 1024, 25, true);
     irsend = new IRsend(IR_TX_PIN);
+    
+    // Discard raw captures with less than 20 pulses to improve noise resistance
+    irrecv->setUnknownThreshold(20);
+    
     irrecv->enableIRIn();
     irsend->begin();
 
@@ -169,28 +288,7 @@ void setup() {
                             request->send(200, "text/plain", "OK: Sent to Dumb Pipe");
                         } else if (currentState == STATE_SNIPER && appSniper) {
                             appSniper->loadSignalRaw(tempRaw);
-                            
-                            // Send "Target_Locked" event to HA with raw array for converter compatibility
-                            HTTPClient http;
-                            http.begin(WEBHOOK_URL);
-                            http.setTimeout(HTTP_TIMEOUT_MS);
-                            http.addHeader("Content-Type", "application/json");
-
-                            JsonDocument docOut;
-                            docOut["Device"] = "Panopticon_Sniper";
-                            docOut["Button"] = "Target_Locked";
-                            
-                            JsonArray rawArrayOut = docOut["raw"].to<JsonArray>();
-                            for (size_t i = 0; i < tempRaw.size(); i++) {
-                                rawArrayOut.add(tempRaw[i]);
-                            }
-                            
-                            String payload;
-                            serializeJson(docOut, payload);
-                            http.POST(payload);
-                            http.end();
-
-                            request->send(200, "text/plain", "OK: Loaded into Sniper");
+                            request->send(200, "text/plain", "OK: Loaded into Sniper. POST triggered in main loop.");
                         } else {
                             request->send(400, "text/plain", "App not ready to receive TX");
                         }
@@ -276,7 +374,12 @@ void loop() {
 
     // --- Centralized IR Receive & Push ---
     if (irrecv && irrecv->decode(&results)) {
-        if (results.rawlen >= 10 && results.rawlen <= 1024) { 
+        // Physical Noise Filter (Squelch)
+        // Valid IR signals start with a long leader code (usually >3000us).
+        // Discard anything starting with less than 1000us to prevent fake triggers from physical tapping/vibration.
+        uint16_t firstPulseUs = (results.rawlen > 1) ? results.rawbuf[1] * kRawTick : 0;
+        
+        if (results.rawlen >= 10 && results.rawlen <= 1024 && firstPulseUs > 1000) { 
             String rawJson;
             rawJson.reserve(results.rawlen * 6 + 10);
             rawJson = "[";
@@ -292,9 +395,14 @@ void loop() {
             }
             rawJson += "]";
 
-            String hexCode = resultToHumanReadableBasic(&results);
-            if (hexCode.isEmpty() || hexCode == "UNKNOWN") {
-                 hexCode = "RAW_" + String(results.rawlen - 1);
+            String hexCode = "";
+            if (results.decode_type != decode_type_t::UNKNOWN) {
+                hexCode = typeToString(results.decode_type) + " 0x" + uint64ToString(results.value, 16);
+            } else {
+                hexCode = decode_custom_nec(rawVector);
+                if (hexCode.isEmpty()) {
+                    hexCode = "RAW_" + String(results.rawlen - 1);
+                }
             }
 
             if (currentState == STATE_DUMB_PIPE && appDumbPipe) {
