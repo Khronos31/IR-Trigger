@@ -80,3 +80,23 @@ transmitters:
     ip: "192.168.1.30"
 ```
 ※ `ip` には Nature Remo のローカル IP アドレスを指定してください。
+
+---
+
+## 4. テスト・デバッグ用 (Mock)
+
+実際のデバイスに赤外線を送信せず、Home Assistant のログ上に「どのコードが送信されるはずだったか」を出力するだけの仮想送信機です。
+新しいデバイスやルーティングの設定をテストする際に、実際の家電を動かすことなく安全に動作確認を行うことができます。
+
+### 設定例 (`IR-Trigger.yaml`)
+```yaml
+transmitters:
+  tx_debug:
+    name: "Debug Transmitter"
+    type: mock
+```
+
+送信を実行すると、HAのログに以下のように出力されます：
+```text
+[MOCK] Sending: NEC-80EA12ED
+```
