@@ -44,9 +44,9 @@ public:
 
     void addLog(const String& msg) {
         String logLine = msg;
-        // Removed artificial limit to allow full protocol names
+        // Truncate cleanly with "..." if the hex code is incredibly long (e.g. 88bit+ air conditioners)
         if (logLine.length() > 30) {
-            logLine = logLine.substring(0, 30);
+            logLine = logLine.substring(0, 24) + "...";
         }
         
         logs.push_back(logLine);
@@ -110,11 +110,22 @@ public:
             if (irsend) {
                 irsend->sendRaw(pendingTxRaw.data(), pendingTxRaw.size(), 38);
                 
-                if (!pendingTxCodeStr.isEmpty() && !pendingTxCodeStr.startsWith("RAW_")) {
-                    int spaceIdx = pendingTxCodeStr.indexOf(' ');
-                    if (spaceIdx > 0) {
-                        addLog("TX: " + pendingTxCodeStr.substring(0, spaceIdx));
-                        addLog("    " + pendingTxCodeStr.substring(spaceIdx + 1));
+                if (!pendingTxCodeStr.isEmpty() && !pendingTxCodeStr.startsWith("RAW-")) {
+                    int delimIdx = pendingTxCodeStr.indexOf('-');
+                    if (delimIdx < 0) delimIdx = pendingTxCodeStr.indexOf(' ');
+                    
+                    if (delimIdx > 0) {
+                        String prefix = pendingTxCodeStr.substring(0, delimIdx);
+                        String hexPart = pendingTxCodeStr.substring(delimIdx + 1);
+                        
+                        addLog("TX: " + prefix);
+                        
+                        // Handle extremely long hex strings by splitting or truncating
+                        if (hexPart.length() > 16) {
+                            addLog("    " + hexPart.substring(0, 13) + "...");
+                        } else {
+                            addLog("    " + hexPart);
+                        }
                     } else {
                         addLog("TX: " + pendingTxCodeStr);
                     }
@@ -128,17 +139,26 @@ public:
     }
 
     void onIrReceived(const String& hexCode, const String& rawJson) {
-        if (!hexCode.isEmpty() && !hexCode.startsWith("RAW_")) {
-            int spaceIdx = hexCode.indexOf(' ');
-            if (spaceIdx > 0) {
-                addLog("RX: " + hexCode.substring(0, spaceIdx));
-                addLog("    " + hexCode.substring(spaceIdx + 1));
+        if (!hexCode.isEmpty() && !hexCode.startsWith("RAW-")) {
+            int delimIdx = hexCode.indexOf('-');
+            if (delimIdx < 0) delimIdx = hexCode.indexOf(' ');
+            
+            if (delimIdx > 0) {
+                String prefix = hexCode.substring(0, delimIdx);
+                String hexPart = hexCode.substring(delimIdx + 1);
+                
+                addLog("RX: " + prefix);
+                if (hexPart.length() > 16) {
+                    addLog("    " + hexPart.substring(0, 13) + "...");
+                } else {
+                    addLog("    " + hexPart);
+                }
             } else {
                 addLog("RX: " + hexCode);
             }
         } else {
-            String countStr = hexCode.startsWith("RAW_") ? hexCode : "Unknown";
-            countStr.replace("RAW_", "");
+            String countStr = hexCode.startsWith("RAW-") ? hexCode : "Unknown";
+            countStr.replace("RAW-", "");
             addLog("RX: " + countStr + " pls");
         }
         draw();
