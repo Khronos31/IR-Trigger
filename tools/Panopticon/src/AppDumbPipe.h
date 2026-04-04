@@ -16,19 +16,17 @@ private:
     bool screenHidden = false;
     bool needsBackgroundRedraw = true;
 
-public:
-    // Make irrecv/irsend public temporarily for main.cpp to access them
-    IRrecv irrecv;
-    IRsend irsend;
-    decode_results results;
-
 private:
-
+    IRsend* irsend = nullptr;
     std::vector<uint16_t> pendingTxRaw;
     bool hasPendingTx = false;
 
 public:
-    AppDumbPipe() : irrecv(IR_RX_PIN, 1024, 25, true), irsend(IR_TX_PIN) {}
+    AppDumbPipe() {}
+
+    void init(IRsend* tx) {
+        irsend = tx;
+    }
 
     void setPendingTx(const std::vector<uint16_t>& raw) {
         pendingTxRaw = raw;
@@ -40,13 +38,6 @@ public:
         screenHidden = false;
         needsBackgroundRedraw = true;
         
-        // Stabilize floating RX pin to prevent infinite dummy interrupt crashes
-        pinMode(IR_RX_PIN, INPUT_PULLUP);
-        delay(50); // Give the pullup time to stabilize before attaching interrupts
-        
-        irrecv.enableIRIn();
-        irsend.begin();
-
         addLog("SYS: DUMB PIPE READY");
     }
 
@@ -114,16 +105,18 @@ public:
 
         // TX Processing
         if (hasPendingTx) {
-            irsend.sendRaw(pendingTxRaw.data(), pendingTxRaw.size(), 38);
-            String txSnippet = "TX:[";
-            size_t maxTxItems = (pendingTxRaw.size() < 4) ? pendingTxRaw.size() : 4;
-            for (size_t i = 0; i < maxTxItems; i++) {
-                txSnippet += String(pendingTxRaw[i]);
-                if (i < 3 && i < pendingTxRaw.size() - 1) txSnippet += ",";
+            if (irsend) {
+                irsend->sendRaw(pendingTxRaw.data(), pendingTxRaw.size(), 38);
+                String txSnippet = "TX:[";
+                size_t maxTxItems = (pendingTxRaw.size() < 4) ? pendingTxRaw.size() : 4;
+                for (size_t i = 0; i < maxTxItems; i++) {
+                    txSnippet += String(pendingTxRaw[i]);
+                    if (i < 3 && i < pendingTxRaw.size() - 1) txSnippet += ",";
+                }
+                if (pendingTxRaw.size() > 4) txSnippet += "...]";
+                else txSnippet += "]";
+                addLog(txSnippet);
             }
-            if (pendingTxRaw.size() > 4) txSnippet += "...]";
-            else txSnippet += "]";
-            addLog(txSnippet);
             hasPendingTx = false;
             draw();
         }

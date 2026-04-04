@@ -13,14 +13,16 @@ private:
     bool btnALongPressedHandled = false;
     uint32_t visualFeedbackEndTime = 0;
     bool needsBackgroundRedraw = true;
+    IRsend* irsend = nullptr;
 
 public:
-    IRrecv irrecv;
-    IRsend irsend;
-    decode_results results;
     std::vector<uint16_t> latestRaw;
 
-    AppSigintLog() : irrecv(IR_RX_PIN, 1024, 25, true), irsend(IR_TX_PIN) {}
+    AppSigintLog() {}
+
+    void init(IRsend* tx) {
+        irsend = tx;
+    }
 
     void setup() {
         latestCode = "";
@@ -28,11 +30,6 @@ public:
         btnALongPressedHandled = false;
         visualFeedbackEndTime = 0;
         needsBackgroundRedraw = true;
-
-        pinMode(IR_RX_PIN, INPUT_PULLUP);
-        delay(50);
-        irrecv.enableIRIn();
-        irsend.begin();
     }
 
     void draw(bool fullDraw = false) {
@@ -97,7 +94,9 @@ public:
         else if (M5.BtnA.wasReleased()) {
              if (!btnALongPressedHandled) {
                  if (!latestCode.isEmpty() && latestRaw.size() > 0) {
-                     irsend.sendRaw(latestRaw.data(), latestRaw.size(), 38);
+                     if (irsend) {
+                         irsend->sendRaw(latestRaw.data(), latestRaw.size(), 38);
+                     }
                      Serial.printf("SIGINT FIRED: %s\n", latestCode.c_str());
                      M5.Display.fillCircle(M5.Display.width() - 10, 10, 5, TFT_CYAN);
                      visualFeedbackEndTime = millis() + 50;

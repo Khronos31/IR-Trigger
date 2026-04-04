@@ -10,17 +10,20 @@ private:
     bool hasLoadedRaw = false;
     bool needsBackgroundRedraw = true;
     uint32_t visualFeedbackEndTime = 0;
-    IRsend irsend;
+    IRsend* irsend = nullptr;
 
 public:
-    AppSniper() : irsend(IR_TX_PIN) {}
+    AppSniper() {}
+
+    void init(IRsend* tx) {
+        irsend = tx;
+    }
 
     void setup() {
         loadedRaw.clear();
         hasLoadedRaw = false;
         needsBackgroundRedraw = true;
         visualFeedbackEndTime = 0;
-        irsend.begin();
     }
 
     void draw(bool fullDraw = false) {
@@ -76,8 +79,10 @@ public:
 
         if (M5.BtnA.wasPressed()) {
             if (hasLoadedRaw && visualFeedbackEndTime == 0) {
-                irsend.sendRaw(loadedRaw.data(), loadedRaw.size(), 38);
-                Serial.printf("SNIPER FIRED: %d pulses\n", loadedRaw.size());
+                if (irsend) {
+                    irsend->sendRaw(loadedRaw.data(), loadedRaw.size(), 38);
+                    Serial.printf("SNIPER FIRED: %d pulses\n", loadedRaw.size());
+                }
                 hasLoadedRaw = false; 
                 
                 // Flash screen red and set timer

@@ -19,10 +19,21 @@ const State menuStates[] = {STATE_DUMB_PIPE, STATE_SNIPER, STATE_SIGINT_LOG};
 bool btnBLongPressedHandled = false;
 bool needsMenuRedraw = true;
 
+#include <IRremoteESP8266.h>
+#include <IRrecv.h>
+#include <IRsend.h>
+#include <IRutils.h>
+#include "Config.h"
+
+// Global pointers for ALL hardware and apps to ensure lazy initialization
+IRrecv* irrecv = nullptr;
+IRsend* irsend = nullptr;
+decode_results results;
+
 // Instantiate Apps
-AppDumbPipe appDumbPipe;
-AppSniper appSniper;
-AppSigintLog appSigintLog;
+AppDumbPipe* appDumbPipe = nullptr;
+AppSniper* appSniper = nullptr;
+AppSigintLog* appSigintLog = nullptr;
 
 void drawMenu(bool fullDraw = false) {
     if (fullDraw || needsMenuRedraw) {
@@ -95,6 +106,24 @@ void setup() {
         delay(10);
     }
 
+    // Initialize IR hardware centrally with strict stability sequence
+    pinMode(IR_RX_PIN, INPUT_PULLUP);
+    delay(200); // Completely stabilize physical pin voltage before allowing interrupts
+
+    irrecv = new IRrecv(IR_RX_PIN, 1024, 25, true);
+    irsend = new IRsend(IR_TX_PIN);
+    irrecv->enableIRIn();
+    irsend->begin();
+
+    // Now safely instantiate App classes after OS runtime is fully awake
+    appDumbPipe = new AppDumbPipe();
+    appSniper = new AppSniper();
+    appSigintLog = new AppSigintLog();
+
+    appDumbPipe->init(irsend);
+    appSniper->init(irsend);
+    appSigintLog->init(irsend);
+
     WiFi.setHostname("Panopticon");
     WiFi.begin(ssid, password);
     unsigned long lastPrintTime = 0;
@@ -135,11 +164,11 @@ void setup() {
             tempRaw.push_back(abs(v.as<int>()));
         }
 
-                        if (currentState == STATE_DUMB_PIPE) {
-                            appDumbPipe.setPendingTx(tempRaw);
+                        if (currentState == STATE_DUMB_PIPE && appDumbPipe) {
+                            appDumbPipe->setPendingTx(tempRaw);
                             request->send(200, "text/plain", "OK: Sent to Dumb Pipe");
-                        } else if (currentState == STATE_SNIPER) {
-                            appSniper.loadSignalRaw(tempRaw);
+                        } else if (currentState == STATE_SNIPER && appSniper) {
+                            appSniper->loadSignalRaw(tempRaw);
                             
                             // Send "Target_Locked" event to HA with raw array for converter compatibility
                             HTTPClient http;
@@ -208,15 +237,15 @@ void loop() {
         if (M5.BtnA.wasPressed()) {
             currentState = menuStates[menuCursor];
             // Initialize App
-            if (currentState == STATE_DUMB_PIPE) {
-                appDumbPipe.setup();
-                appDumbPipe.draw(true);
-            } else if (currentState == STATE_SNIPER) {
-                appSniper.setup();
-                appSniper.draw(true);
-            } else if (currentState == STATE_SIGINT_LOG) {
-                appSigintLog.setup();
-                appSigintLog.draw(true);
+            if (currentState == STATE_DUMB_PIPE && appDumbPipe) {
+                appDumbPipe->setup();
+                appDumbPipe->draw(true);
+            } else if (currentState == STATE_SNIPER && appSniper) {
+                appSniper->setup();
+                appSniper->draw(true);
+            } else if (currentState == STATE_SIGINT_LOG && appSigintLog) {
+                appSigintLog->setup();
+                appSigintLog->draw(true);
             }
         }
     } else {
@@ -225,13 +254,13 @@ void loop() {
         // Dispatch to appropriate app loop
         switch (currentState) {
             case STATE_DUMB_PIPE:
-                appDumbPipe.loop(returnToMenu);
+                if (appDumbPipe) appDumbPipe->loop(returnToMenu);
                 break;
             case STATE_SNIPER:
-                appSniper.loop(returnToMenu);
+                if (appSniper) appSniper->loop(returnToMenu);
                 break;
             case STATE_SIGINT_LOG:
-                appSigintLog.loop(returnToMenu);
+                if (appSigintLog) appSigintLog->loop(returnToMenu);
                 break;
             default:
                 break;
@@ -246,45 +275,34 @@ void loop() {
     }
 
     // --- Centralized IR Receive & Push ---
-    IRrecv* activeReceiver = nullptr;
-    decode_results* activeResults = nullptr;
-
-    if (currentState == STATE_DUMB_PIPE) {
-        activeReceiver = &appDumbPipe.irrecv;
-        activeResults = &appDumbPipe.results;
-    } else if (currentState == STATE_SIGINT_LOG) {
-        activeReceiver = &appSigintLog.irrecv;
-        activeResults = &appSigintLog.results;
-    }
-
-    if (activeReceiver && activeReceiver->decode(activeResults)) {
-        if (activeResults->rawlen >= 10 && activeResults->rawlen <= 1024) { 
+    if (irrecv && irrecv->decode(&results)) {
+        if (results.rawlen >= 10 && results.rawlen <= 1024) { 
             String rawJson;
-            rawJson.reserve(activeResults->rawlen * 6 + 10);
+            rawJson.reserve(results.rawlen * 6 + 10);
             rawJson = "[";
             
             std::vector<uint16_t> rawVector;
-            rawVector.reserve(activeResults->rawlen - 1);
+            rawVector.reserve(results.rawlen - 1);
             
-            for (uint16_t i = 1; i < activeResults->rawlen; i++) {
-                uint16_t us = activeResults->rawbuf[i] * kRawTick;
+            for (uint16_t i = 1; i < results.rawlen; i++) {
+                uint16_t us = results.rawbuf[i] * kRawTick;
                 rawJson += String(us);
                 rawVector.push_back(us);
-                if (i < activeResults->rawlen - 1) rawJson += ",";
+                if (i < results.rawlen - 1) rawJson += ",";
             }
             rawJson += "]";
 
-            String hexCode = resultToHumanReadableBasic(activeResults);
+            String hexCode = resultToHumanReadableBasic(&results);
             if (hexCode.isEmpty() || hexCode == "UNKNOWN") {
-                 hexCode = "RAW_" + String(activeResults->rawlen - 1);
+                 hexCode = "RAW_" + String(results.rawlen - 1);
             }
 
-            if (currentState == STATE_DUMB_PIPE) {
-                appDumbPipe.onIrReceived(hexCode, rawJson);
-            } else if (currentState == STATE_SIGINT_LOG) {
-                appSigintLog.onIrReceived(hexCode, rawJson, rawVector, millis());
+            if (currentState == STATE_DUMB_PIPE && appDumbPipe) {
+                appDumbPipe->onIrReceived(hexCode, rawJson);
+            } else if (currentState == STATE_SIGINT_LOG && appSigintLog) {
+                appSigintLog->onIrReceived(hexCode, rawJson, rawVector, millis());
             }
         }
-        activeReceiver->resume();
+        irrecv->resume();
     }
 }
