@@ -6,4 +6,4 @@ lua-remote-hub/
 IR-Trigger.yaml
 .pio/
 .vscode/
-tools/Panopticon/src/secrets.h
+tools/Panopticon/secrets.ini

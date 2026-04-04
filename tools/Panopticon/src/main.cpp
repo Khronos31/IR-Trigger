@@ -55,13 +55,6 @@ void drawMenu(bool fullDraw = false) {
 
 #include <WiFi.h>
 
-#if __has_include("secrets.h")
-#include "secrets.h"
-#else
-#define WIFI_SSID "YOUR_SSID"
-#define WIFI_PASSWORD "YOUR_PASSWORD"
-#endif
-
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 
