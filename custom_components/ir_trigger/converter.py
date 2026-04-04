@@ -113,9 +113,8 @@ def code_to_raw(code: str) -> list[int]:
     # Convert HEX to bits using IRremoteESP8266 logic
     bits = []
     try:
-        val = int(hex_data, 16)
-        
         if name == "NEC":
+            val = int(hex_data, 16)
             # IRremoteESP8266's NEC: MSB first globally, but each 8-bit byte is reversed.
             # We must reconstruct the raw LSB-first pulse stream from this format.
             for i in range(0, bit_length, 8):
@@ -123,13 +122,21 @@ def code_to_raw(code: str) -> list[int]:
                 for j in range(8):
                     bits.append((byte_val >> j) & 1)
         elif name == "SONY":
+            val = int(hex_data, 16)
             # SONY: MSB First
             for i in range(bit_length):
                 bits.append((val >> (bit_length - 1 - i)) & 1)
         else:
-            # DAIKIN, SWITCHBOT, AEHA, etc.: LSB First
-            for i in range(bit_length):
-                bits.append((val >> i) & 1)
+            # DAIKIN, SWITCHBOT, AEHA, etc.: LSB First per byte, hex strings map linearly to bytes
+            # Pad hex data to even number of characters to process by bytes
+            if len(hex_data) % 2 != 0:
+                hex_data = "0" + hex_data
+            
+            for i in range(0, len(hex_data), 2):
+                byte_val = int(hex_data[i:i+2], 16)
+                for j in range(8):
+                    if len(bits) < bit_length:
+                        bits.append((byte_val >> j) & 1)
     except ValueError:
         return []
 
@@ -233,9 +240,8 @@ def _decode_sony(raw: list[int], config: dict, protocol_name: str) -> str | None
 
 def _bits_to_hex(bits: list[int], protocol: str) -> str:
     """Convert bit list to hex string using IRremoteESP8266 logic."""
-    val = 0
-    
     if protocol == "NEC":
+        val = 0
         # NEC: Reconstruct the IRremoteESP8266 32-bit (or custom length) value.
         # It takes LSB-first received bits, but builds an MSB-first value where each byte is reversed.
         for i in range(0, len(bits), 8):
@@ -245,19 +251,26 @@ def _bits_to_hex(bits: list[int], protocol: str) -> str:
                 if b:
                     byte_val |= (1 << j)
             val |= (byte_val << (len(bits) - 8 - i))
+        digits = max(2, (len(bits) + 3) // 4)
+        return f"{val:0{digits}X}"
     elif protocol == "SONY":
+        val = 0
         # SONY: MSB First
         for i, b in enumerate(bits):
             if b:
                 val |= (1 << (len(bits) - 1 - i))
+        digits = max(2, (len(bits) + 3) // 4)
+        return f"{val:0{digits}X}"
     else:
         # DAIKIN, SWITCHBOT, AEHA, etc.: LSB First
-        for i, b in enumerate(bits):
-            if b:
-                val |= (1 << i)
-                
-    # Calculate required hex digits (4 bits per hex digit)
-    # Minimum 2 digits
-    digits = max(2, (len(bits) + 3) // 4)
-    # Ensure it's formatted to the correct width
-    return f"{val:0{digits}X}"
+        # These are long protocols, use byte-wise string concatenation to avoid 64-bit integer limits
+        # and match C++ parsing capabilities
+        hex_str = ""
+        for i in range(0, len(bits), 8):
+            byte_val = 0
+            chunk = bits[i:i+8]
+            for j, b in enumerate(chunk):
+                if b:
+                    byte_val |= (1 << j)
+            hex_str += f"{byte_val:02X}"
+        return hex_str
