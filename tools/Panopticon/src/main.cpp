@@ -45,7 +45,11 @@ void drawMenu(bool fullDraw = false) {
             M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
             M5.Display.print("  ");
         }
-        M5.Display.println(String(menuNames[i]) + "       "); // padding to clear artifacts
+        String name = menuNames[i];
+        while (name.length() < 15) {
+            name += " ";
+        }
+        M5.Display.println(name);
     }
 }
 
