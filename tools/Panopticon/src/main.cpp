@@ -49,12 +49,35 @@ void drawMenu(bool fullDraw = false) {
     }
 }
 
+#include <WiFi.h>
+
+const char* ssid = "YOUR_SSID";
+const char* password = "YOUR_PASSWORD";
+
 void setup() {
     auto cfg = M5.config();
     M5.begin(cfg);
     
     M5.Display.setRotation(1); // Set landscape
+    M5.Display.setBrightness(128);
     
+    M5.Display.fillScreen(TFT_BLACK);
+    M5.Display.setCursor(0, 5);
+    M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
+    M5.Display.setTextSize(2);
+    M5.Display.println(" Connecting Wi-Fi...");
+    
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        M5.Display.print(".");
+        Serial.print(".");
+    }
+    
+    Serial.println("\nWiFi Connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+
     drawMenu(true);
     Serial.println("Panopticon initialized.");
 }

@@ -1,6 +1,16 @@
 #pragma once
 #include <M5Unified.h>
 #include <vector>
+#include <IRremoteESP8266.h>
+#include <IRrecv.h>
+#include <IRsend.h>
+#include <ESPAsyncWebServer.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+
+const uint16_t IR_TX_PIN = 9;
+const uint16_t IR_RX_PIN = 33;
+const char* WEBHOOK_URL = "http://192.168.1.X:8123/api/webhook/rx_panopticon";
 
 class AppDumbPipe {
 private:
@@ -9,12 +19,48 @@ private:
     bool screenHidden = false;
     bool needsBackgroundRedraw = true;
 
+    IRrecv irrecv;
+    IRsend irsend;
+    decode_results results;
+    AsyncWebServer server;
+
+    std::vector<uint16_t> pendingTxRaw;
+    bool hasPendingTx = false;
+
 public:
+    AppDumbPipe() : irrecv(IR_RX_PIN, 1024, 15, true), irsend(IR_TX_PIN), server(8080) {}
+
     void setup() {
         logs.clear();
         screenHidden = false;
         needsBackgroundRedraw = true;
+        
+        irrecv.enableIRIn();
+        irsend.begin();
+
+        server.on("/tx", HTTP_POST, [](AsyncWebServerRequest *request){}, NULL, 
+            [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+                if (index == 0) { // Assume small JSON payload fits in one chunk
+                    JsonDocument doc;
+                    DeserializationError error = deserializeJson(doc, data, len);
+                    if (!error && doc.containsKey("raw")) {
+                        JsonArray rawArr = doc["raw"].as<JsonArray>();
+                        std::vector<uint16_t> tempRaw;
+                        for (JsonVariant v : rawArr) {
+                            int val = v.as<int>();
+                            tempRaw.push_back(abs(val)); // Handle negative offsets securely
+                        }
+                        this->pendingTxRaw = tempRaw;
+                        this->hasPendingTx = true;
+                    }
+                    request->send(200, "text/plain", "OK");
+                }
+            }
+        );
+        server.begin();
+
         addLog("SYS: DUMB PIPE READY");
+        addLog("HTTP: Port 8080");
     }
 
     void addLog(const String& msg) {
@@ -69,6 +115,7 @@ public:
 
     void loop(bool& returnToMenu) {
         if (M5.BtnB.wasPressed()) {
+            server.end(); // Stop server when exiting app
             returnToMenu = true;
             return;
         }
@@ -77,6 +124,44 @@ public:
             screenHidden = !screenHidden;
             needsBackgroundRedraw = true;
             draw(true);
+        }
+
+        // TX Processing
+        if (hasPendingTx) {
+            irsend.sendRaw(pendingTxRaw.data(), pendingTxRaw.size(), 38);
+            addLog("TX: " + String(pendingTxRaw.size()) + " pulses");
+            hasPendingTx = false;
+            draw();
+        }
+
+        // RX Processing
+        if (irrecv.decode(&results)) {
+            if (results.rawlen > 1) { // rawbuf[0] is idle time
+                String rawJson = "[";
+                for (uint16_t i = 1; i < results.rawlen; i++) {
+                    rawJson += String(results.rawbuf[i] * kRawTick);
+                    if (i < results.rawlen - 1) rawJson += ",";
+                }
+                rawJson += "]";
+
+                // Post to HA Webhook securely without blocking drawing completely
+                HTTPClient http;
+                http.begin(WEBHOOK_URL);
+                http.addHeader("Content-Type", "application/json");
+                
+                String payload = "{\"raw\":" + rawJson + "}";
+                int httpResponseCode = http.POST(payload);
+                http.end();
+
+                addLog("RX: " + String(results.rawlen - 1) + " pulses");
+                if (httpResponseCode > 0) {
+                    addLog(" -> OK: HTTP " + String(httpResponseCode));
+                } else {
+                    addLog(" -> ERR: " + http.errorToString(httpResponseCode));
+                }
+                draw();
+            }
+            irrecv.resume();
         }
     }
 };
