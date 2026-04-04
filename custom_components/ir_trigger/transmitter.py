@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 class TXInterface(ABC):
     """Base class for IR Transmitters."""
     @abstractmethod
-    async def async_send(self, code: str, force_aeha_tx: bool = False):
+    async def async_send(self, code: str, force_aeha_tx: bool = False, long_nec: bool = False):
         pass
 
 class USBad00020pTX(TXInterface):
@@ -60,9 +60,11 @@ class USBad00020pTX(TXInterface):
         except:
             return None
 
-    async def async_send(self, code: str, force_aeha_tx: bool = False):
+    async def async_send(self, code: str, force_aeha_tx: bool = False, long_nec: bool = False):
         if force_aeha_tx and code.startswith("NEC_"):
             code = code.replace("NEC_", "AEHA_", 1)
+        elif long_nec and code.startswith("NEC_"):
+            code = code.replace("NEC_", "NEC-L_", 1)
         parts = code.split('_')
         if len(parts) != 2: return
         fmt_str, hex_code = parts
@@ -99,8 +101,10 @@ class ESPHomeTX(TXInterface):
         self.hass = hass
         self.node_name = node_name
 
-    async def async_send(self, code: str, force_aeha_tx: bool = False):
+    async def async_send(self, code: str, force_aeha_tx: bool = False, long_nec: bool = False):
         from . import converter
+        if long_nec and code.startswith("NEC_"):
+            code = code.replace("NEC_", "NEC-L_", 1)
         raw = converter.code_to_raw(code)
         if not raw:
             _LOGGER.error("Failed to convert code to RAW for ESPHome: %s", code)
@@ -131,8 +135,10 @@ class WebhookTX(TXInterface):
         self.hass = hass
         self.url = url
         
-    async def async_send(self, code: str, force_aeha_tx: bool = False):
+    async def async_send(self, code: str, force_aeha_tx: bool = False, long_nec: bool = False):
         from . import converter
+        if long_nec and code.startswith("NEC_"):
+            code = code.replace("NEC_", "NEC-L_", 1)
         raw = converter.code_to_raw(code)
         if not raw:
             _LOGGER.error("Failed to convert code to RAW: %s", code)
@@ -155,8 +161,10 @@ class NatureRemoTX(TXInterface):
             _LOGGER.error("NatureRemoTX initialized without IP address")
         self.url = f"http://{ip}/messages"
 
-    async def async_send(self, code: str, force_aeha_tx: bool = False):
+    async def async_send(self, code: str, force_aeha_tx: bool = False, long_nec: bool = False):
         from . import converter
+        if long_nec and code.startswith("NEC_"):
+            code = code.replace("NEC_", "NEC-L_", 1)
         raw = converter.code_to_raw(code)
         if not raw:
             _LOGGER.error("Failed to convert code to RAW for Nature Remo: %s", code)
@@ -175,8 +183,8 @@ class NatureRemoTX(TXInterface):
             _LOGGER.error("Error sending Nature Remo TX to %s: %s", self.url, e)
 
 class MockTX(TXInterface):
-    async def async_send(self, code: str, force_aeha_tx: bool = False):
-        _LOGGER.info("[MOCK] Sending: %s", code)
+    async def async_send(self, code: str, force_aeha_tx: bool = False, long_nec: bool = False):
+        _LOGGER.info("[MOCK] Sending: %s (force_aeha: %s, long_nec: %s)", code, force_aeha_tx, long_nec)
 
 def create_transmitter(hass: HomeAssistant, config: dict) -> TXInterface:
     tx_type = config.get(CONF_TYPE)

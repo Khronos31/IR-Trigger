@@ -7,7 +7,7 @@ _LOGGER = logging.getLogger(__name__)
 class IRTriggerEntity(Entity):
     """Base class for IR Trigger entities (Light, Switch, MediaPlayer)."""
 
-    def __init__(self, hass, device_id, device_name, transmitter, transmitter_id, buttons, mapping, force_aeha_tx):
+    def __init__(self, hass, device_id, device_name, transmitter, transmitter_id, buttons, mapping, force_aeha_tx, long_nec):
         """Initialize the entity."""
         self.hass = hass
         self._device_id = device_id
@@ -17,6 +17,7 @@ class IRTriggerEntity(Entity):
         self._buttons = buttons
         self._mapping = mapping
         self._force_aeha_tx = force_aeha_tx
+        self._long_nec = long_nec
         
         self._attr_name = device_name
 
@@ -33,7 +34,7 @@ class IRTriggerEntity(Entity):
             return False
             
         if self._transmitter:
-            await self._transmitter.async_send(ir_code, force_aeha_tx=self._force_aeha_tx)
+            await self._transmitter.async_send(ir_code, force_aeha_tx=self._force_aeha_tx, long_nec=self._long_nec)
             return True
         return False
 

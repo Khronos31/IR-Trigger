@@ -18,6 +18,8 @@ from .const import (
     CONF_FORCE_AEHA_TX,
     CONF_DOMAIN,
     CONF_MAPPING,
+    CONF_FORCE_AEHA_TX,
+    CONF_LONG_NEC,
 )
 from .entity import IRTriggerEntity
 
@@ -50,12 +52,13 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                     device_id,
                     device_info.get(CONF_NAME, device_id),
                     tx,
-                    tx_id,
-                    device_info.get(CONF_BUTTONS, {}),
-                    device_info.get(CONF_MAPPING, {}),
-                    device_info.get(CONF_FORCE_AEHA_TX, False)
+                        tx_id,
+                        device_info.get(CONF_BUTTONS, {}),
+                        device_info.get(CONF_MAPPING, {}),
+                        device_info.get(CONF_FORCE_AEHA_TX, False),
+                        device_info.get(CONF_LONG_NEC, False)
+                    )
                 )
-            )
         
         async_add_entities(entities)
 
