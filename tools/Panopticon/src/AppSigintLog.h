@@ -58,7 +58,14 @@ public:
              M5.Display.println(" [WAITING...]                ");
         } else {
              M5.Display.setTextColor(TFT_CYAN, TFT_BLACK);
-             M5.Display.println(" " + latestCode + "                ");
+             // Truncate cleanly for 160x80 screen (size 2 allows ~13 chars per line, we fit around 12)
+             String displayStr = latestCode;
+             if (displayStr.length() > 24) {
+                 displayStr = displayStr.substring(0, 20) + "...";
+             }
+             // For text size 2 on a 160px width, anything over 13 chars will wrap to next line.
+             // We let it wrap naturally up to 2 lines, then it truncates.
+             M5.Display.println(" " + displayStr + "                ");
         }
     }
 

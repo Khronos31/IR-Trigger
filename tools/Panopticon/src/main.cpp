@@ -69,6 +69,68 @@ void enqueueWebhook(const String& payload) {
     }
 }
 
+// Custom decoder for unknown AEHA-like signals
+String decode_custom_aeha(const std::vector<uint16_t>& raw) {
+    // Basic AEHA leader is ~3200us ON, ~1600us OFF.
+    // Need at least leader (2) + a few bits (e.g. 10 bits = 20)
+    if (raw.size() < 22) return "";
+
+    auto check_tolerance = [](uint16_t val, uint16_t expected) {
+        return (val >= expected * 0.7) && (val <= expected * 1.3);
+    };
+
+    if (!check_tolerance(raw[0], 3200) || !check_tolerance(raw[1], 1600)) {
+        return "";
+    }
+
+    std::vector<uint8_t> bits;
+    bits.reserve(256); // Support arbitrary length (e.g. 88bit+)
+
+    for (size_t i = 2; i < raw.size() - 1; i += 2) {
+        uint16_t mark = raw[i];
+        uint16_t space = raw[i + 1];
+
+        // Standard AEHA mark is ~400us. We tolerate from ~200us to ~800us.
+        if (mark < 200 || mark > 800) {
+            break; // Stop at first invalid mark
+        }
+
+        // Extremely long space indicates gap/repeat code (end of data)
+        if (space > 5000) {
+            break;
+        }
+
+        // Determine bit based on space length threshold.
+        // Standard AEHA: bit0 ~400us, bit1 ~1200us.
+        // Threshold around 800us cleanly separates 0 and 1.
+        if (space < 800) {
+            bits.push_back(0); // Bit 0
+        } else {
+            bits.push_back(1); // Bit 1
+        }
+    }
+
+    // Only return if we decoded a reasonable amount of bits (e.g. 16 or more)
+    if (bits.size() >= 16) {
+        String hexStr = "";
+        for (size_t i = 0; i < bits.size(); i += 8) {
+            uint8_t byte_val = 0;
+            // 8ビットチャンク内で、LSB First (下位ビットから詰める)
+            for (size_t b_idx = 0; b_idx < 8 && (i + b_idx) < bits.size(); b_idx++) {
+                if (bits[i + b_idx] == 1) {
+                    byte_val |= (1 << b_idx);
+                }
+            }
+            char hexByte[3];
+            snprintf(hexByte, sizeof(hexByte), "%02X", byte_val);
+            hexStr += String(hexByte);
+        }
+        return "AEHA 0x" + hexStr + " (" + String(bits.size()) + "bit)";
+    }
+    
+    return "";
+}
+
 // Custom decoder for unknown NEC-like signals (varying bit lengths)
 String decode_custom_switchbot(const std::vector<uint16_t>& raw) {
     // Basic NEC leader is ~9000us ON, ~4500us OFF.
@@ -83,10 +145,10 @@ String decode_custom_switchbot(const std::vector<uint16_t>& raw) {
         return "";
     }
 
-    uint64_t data = 0;
-    int bits_decoded = 0;
+    std::vector<uint8_t> bits;
+    bits.reserve(256); // Support arbitrary length
 
-    for (size_t i = 2; i < raw.size() - 1 && bits_decoded < 64; i += 2) {
+    for (size_t i = 2; i < raw.size() - 1; i += 2) {
         uint16_t mark = raw[i];
         uint16_t space = raw[i + 1];
 
@@ -106,21 +168,28 @@ String decode_custom_switchbot(const std::vector<uint16_t>& raw) {
         // Standard NEC: bit0 ~560, bit1 ~1680. SwitchBot: bit0 ~730, bit1 ~2150.
         // Threshold around 1400us cleanly separates 0 and 1 for both.
         if (space < 1400) {
-            // Bit 0: Do nothing (or explicitly mask 0)
-            data &= ~(1ULL << bits_decoded);
+            bits.push_back(0); // Bit 0
         } else {
-            // Bit 1: Set the bit at bits_decoded (LSB First globally, matching IRremoteESP8266 logic)
-            data |= (1ULL << bits_decoded);
+            bits.push_back(1); // Bit 1
         }
-        bits_decoded++;
     }
 
-    // Only return if we decoded a reasonable amount of bits (e.g. 16 to 64)
-    if (bits_decoded >= 16) {
-        char buf[64];
-        // Print as a single global hex string (IRremoteESP8266 standard)
-        snprintf(buf, sizeof(buf), "SWITCHBOT 0x%llX (%dbit)", data, bits_decoded);
-        return String(buf);
+    // Only return if we decoded a reasonable amount of bits (e.g. 16 or more)
+    if (bits.size() >= 16) {
+        String hexStr = "";
+        for (size_t i = 0; i < bits.size(); i += 8) {
+            uint8_t byte_val = 0;
+            // 8ビットチャンク内で、LSB First (下位ビットから詰める)
+            for (size_t b_idx = 0; b_idx < 8 && (i + b_idx) < bits.size(); b_idx++) {
+                if (bits[i + b_idx] == 1) {
+                    byte_val |= (1 << b_idx);
+                }
+            }
+            char hexByte[3];
+            snprintf(hexByte, sizeof(hexByte), "%02X", byte_val);
+            hexStr += String(hexByte);
+        }
+        return "SWITCHBOT 0x" + hexStr + " (" + String(bits.size()) + "bit)";
     }
     
     return "";
@@ -418,6 +487,9 @@ void loop() {
                 hexCode = typeToString(results.decode_type) + " 0x" + uint64ToString(results.value, 16);
             } else {
                 hexCode = decode_custom_switchbot(rawVector);
+                if (hexCode.isEmpty()) {
+                    hexCode = decode_custom_aeha(rawVector);
+                }
                 if (hexCode.isEmpty()) {
                     hexCode = "RAW_" + String(results.rawlen - 1);
                 }
