@@ -12,13 +12,13 @@
 class AppDumbPipe {
 private:
     std::vector<String> logs;
-    const int maxLogs = 3; // Reduced max logs for larger font
+    const int maxLogs = 6; // Restored to more lines for 2-line display
     bool screenHidden = false;
     bool needsBackgroundRedraw = true;
 
     IRsend* irsend = nullptr;
     std::vector<uint16_t> pendingTxRaw;
-    String pendingTxCodeStr = ""; // Holds beautiful string like "NEC_LIKE 0x12345678"
+    String pendingTxCodeStr = ""; // Holds beautiful string like "SWITCHBOT 0x12345678"
     bool hasPendingTx = false;
 
 public:
@@ -44,12 +44,13 @@ public:
 
     void addLog(const String& msg) {
         String logLine = msg;
-        if (logLine.length() > 20) { // Limit length for larger font without wrapping
-            logLine = logLine.substring(0, 20);
+        // Removed artificial limit to allow full protocol names
+        if (logLine.length() > 30) {
+            logLine = logLine.substring(0, 30);
         }
         
         logs.push_back(logLine);
-        if (logs.size() > maxLogs) {
+        while (logs.size() > maxLogs) {
             logs.erase(logs.begin());
         }
     }
@@ -77,17 +78,17 @@ public:
             needsBackgroundRedraw = false;
         }
         
-        M5.Display.setCursor(0, 40);
-        M5.Display.setTextSize(1.5); // Larger font for better readability
+        M5.Display.setCursor(0, 45);
+        M5.Display.setTextSize(1); // Restored original size to fit more info
         M5.Display.setTextColor(TFT_GREEN, TFT_BLACK);
         
         for(size_t i = 0; i < maxLogs; i++) {
             if (i < logs.size()) {
                 String padded = logs[i];
-                while(padded.length() < 20) padded += " ";
+                while(padded.length() < 30) padded += " ";
                 M5.Display.println(padded);
             } else {
-                M5.Display.println("                    "); // 20 spaces
+                M5.Display.println("                              "); // 30 spaces
             }
         }
     }
@@ -109,13 +110,17 @@ public:
             if (irsend) {
                 irsend->sendRaw(pendingTxRaw.data(), pendingTxRaw.size(), 38);
                 
-                String logStr = "TX: ";
                 if (!pendingTxCodeStr.isEmpty() && !pendingTxCodeStr.startsWith("RAW_")) {
-                    logStr += pendingTxCodeStr;
+                    int spaceIdx = pendingTxCodeStr.indexOf(' ');
+                    if (spaceIdx > 0) {
+                        addLog("TX: " + pendingTxCodeStr.substring(0, spaceIdx));
+                        addLog("    " + pendingTxCodeStr.substring(spaceIdx + 1));
+                    } else {
+                        addLog("TX: " + pendingTxCodeStr);
+                    }
                 } else {
-                    logStr += String(pendingTxRaw.size()) + " pls";
+                    addLog("TX: " + String(pendingTxRaw.size()) + " pls");
                 }
-                addLog(logStr);
             }
             hasPendingTx = false;
             draw();
@@ -123,17 +128,19 @@ public:
     }
 
     void onIrReceived(const String& hexCode, const String& rawJson) {
-        String logStr = "RX: ";
         if (!hexCode.isEmpty() && !hexCode.startsWith("RAW_")) {
-            logStr += hexCode;
+            int spaceIdx = hexCode.indexOf(' ');
+            if (spaceIdx > 0) {
+                addLog("RX: " + hexCode.substring(0, spaceIdx));
+                addLog("    " + hexCode.substring(spaceIdx + 1));
+            } else {
+                addLog("RX: " + hexCode);
+            }
         } else {
-            // Count pulses directly from JSON array or rely on the length passed in hexCode (e.g. RAW_67)
-            logStr += hexCode.startsWith("RAW_") ? hexCode : "Unknown";
-            logStr.replace("RAW_", "");
-            logStr += " pls";
+            String countStr = hexCode.startsWith("RAW_") ? hexCode : "Unknown";
+            countStr.replace("RAW_", "");
+            addLog("RX: " + countStr + " pls");
         }
-
-        addLog(logStr);
         draw();
 
         // Async Post to HA Webhook via global queue
