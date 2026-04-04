@@ -122,7 +122,7 @@ public:
     }
 
     void loop(bool& returnToMenu) {
-        if (M5.BtnB.wasPressed()) {
+        if (M5.BtnB.wasReleased()) {
             returnToMenu = true;
             return;
         }
