@@ -10,8 +10,6 @@ from .const import (
     CONF_NAME,
     CONF_TRANSMITTER,
     CONF_BUTTONS,
-    CONF_FORCE_AEHA_TX,
-    CONF_LONG_NEC,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,9 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         button_name,
                         ir_code,
                         tx,
-                        tx_id,
-                        device_info.get(CONF_FORCE_AEHA_TX, False),
-                        device_info.get(CONF_LONG_NEC, False)
+                        tx_id
                     )
                 )
         
@@ -61,7 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
 class IRTriggerButton(ButtonEntity):
     """Representation of an IR Trigger Button."""
 
-    def __init__(self, hass, device_id, device_name, button_name, ir_code, transmitter, transmitter_id, force_aeha_tx, long_nec):
+    def __init__(self, hass, device_id, device_name, button_name, ir_code, transmitter, transmitter_id):
         """Initialize the button."""
         self.hass = hass
         self._device_id = device_id
@@ -70,8 +66,6 @@ class IRTriggerButton(ButtonEntity):
         self._ir_code = ir_code
         self._transmitter = transmitter
         self._transmitter_id = transmitter_id
-        self._force_aeha_tx = force_aeha_tx
-        self._long_nec = long_nec
         
         self._attr_name = f"{device_name} {button_name}"
         self._attr_unique_id = f"ir_trigger_btn_{device_id}_{button_name}"
@@ -80,7 +74,7 @@ class IRTriggerButton(ButtonEntity):
         """Handle the button press."""
         _LOGGER.info("Button pressed: %s (%s)", self._attr_name, self._ir_code)
         if self._transmitter:
-            await self._transmitter.async_send(self._ir_code, force_aeha_tx=self._force_aeha_tx, long_nec=self._long_nec)
+            await self._transmitter.async_send(self._ir_code)
 
     @property
     def device_info(self):

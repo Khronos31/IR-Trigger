@@ -73,22 +73,22 @@ def raw_to_code(raw: list[int]) -> str:
             code = _decode_mark_space(raw, config, name)
         
         if code:
-            return f"{name}_{code}"
+            return f"{name}-{code}"
 
     # Fallback to RAW format
     csv_pulses = ",".join(map(str, raw))
-    return f"RAW_{csv_pulses}"
+    return f"RAW-{csv_pulses}"
 
 def code_to_raw(code: str) -> list[int]:
     """Convert code string back to RAW pulse array."""
-    if code.startswith("RAW_"):
+    if code.startswith("RAW-"):
         try:
             return [int(x) for x in code[4:].split(",")]
         except ValueError:
             return []
 
-    # Format check (e.g., NEC_XXXXXXXX or NEC_XXXXXXXX_26)
-    parts = code.split("_")
+    # Format check (e.g., NEC-XXXXXXXX or NEC-XXXXXXXX-26)
+    parts = code.split("-")
     if len(parts) < 2:
         return []
 
@@ -172,7 +172,7 @@ def _decode_mark_space(raw: list[int], config: dict, protocol_name: str) -> str 
     if not bits: return None
     hex_str = _bits_to_hex(bits, protocol_name)
     if len(bits) % 8 != 0:
-        return f"{hex_str}_{len(bits)}"
+        return f"{hex_str}-{len(bits)}"
     return hex_str
 
 def _decode_sony(raw: list[int], config: dict, protocol_name: str) -> str | None:
@@ -201,7 +201,7 @@ def _decode_sony(raw: list[int], config: dict, protocol_name: str) -> str | None
     if not bits: return None
     hex_str = _bits_to_hex(bits, protocol_name)
     if len(bits) % 8 != 0:
-        return f"{hex_str}_{len(bits)}"
+        return f"{hex_str}-{len(bits)}"
     return hex_str
 
 def _bits_to_hex(bits: list[int], protocol: str) -> str:

@@ -39,8 +39,6 @@ from .const import (
     CONF_NAME,
     CONF_LOCAL_RECEIVERS,
     CONF_REPEAT,
-    CONF_FORCE_AEHA_TX,
-    CONF_LONG_NEC,
     CONF_DOMAIN,
     CONF_MAPPING,
     CONF_TEMPLATE,
@@ -227,9 +225,7 @@ class IRTriggerData:
                             "type": "transmit",
                             "action": {
                                 "code": target_keys[key_name],
-                                "transmitter": target_dev.get(CONF_TRANSMITTER),
-                                "force_aeha_tx": target_dev.get(CONF_FORCE_AEHA_TX, False),
-                                "long_nec": target_dev.get(CONF_LONG_NEC, False)
+                                "transmitter": target_dev.get(CONF_TRANSMITTER)
                             }
                         }]
         return mapping
@@ -322,7 +318,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 
                 if tx and receiver not in local_receivers:
                     _LOGGER.info("Auto-Repeating IR code %s for %s", code, device_id)
-                    await tx.async_send(code, force_aeha_tx=target_dev_info.get(CONF_FORCE_AEHA_TX, False), long_nec=target_dev_info.get(CONF_LONG_NEC, False))
+                    await tx.async_send(code)
                 elif tx:
                     _LOGGER.debug("Skipping auto-repeat for %s: receiver %s is local to transmitter %s", device_id, receiver, tx_id)
 
@@ -355,7 +351,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 tx_id = act.get("transmitter")
                 tx = ir_data.transmitters.get(tx_id)
                 if tx:
-                    await tx.async_send(act["code"], force_aeha_tx=act.get("force_aeha_tx", False), long_nec=act.get("long_nec", False))
+                    await tx.async_send(act["code"])
 
     hass.bus.async_listen(EVENT_IR_RECEIVED, handle_ir_event)
     hass.async_create_task(hass.config_entries.flow.async_init(DOMAIN, context={"source": "import"}, data={}))
