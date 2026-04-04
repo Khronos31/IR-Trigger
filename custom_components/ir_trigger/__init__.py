@@ -111,7 +111,7 @@ class IRTriggerData:
             self._setup_routing(config)
             
             self.loaded = True
-            _LOGGER.info("IR-Trigger V2 configuration loaded successfully. TX count: %d, RX count: %d, Device count: %d", 
+            _LOGGER.info("IR-Trigger configuration loaded successfully. TX count: %d, RX count: %d, Device count: %d", 
                          len(self.transmitters), len(self.receivers), len(self.devices))
             async_dispatcher_send(self.hass, SIGNAL_LOAD_COMPLETE)
             

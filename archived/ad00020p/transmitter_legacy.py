@@ -70,7 +70,7 @@ class WebhookTX(TXInterface):
         session = async_get_clientsession(self.hass)
         try:
             async with asyncio.timeout(10):
-                # Send as raw pulse array for "Dumb Pipe" architecture with code string for display
+                # Send as raw pulse array for V2 "Dumb Pipe" architecture with code string for display
                 await session.post(self.url, json={"code": code, "raw": raw})
             _LOGGER.info("Webhook TX sent successfully")
         except Exception as e:

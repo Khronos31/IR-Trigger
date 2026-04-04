@@ -29,11 +29,11 @@ Webhookは以下の2つの形式のいずれかを受け付けます。
   "raw": [9000, 4500, 560, 1680, 560, 560]
 }
 ```
-- `raw`: マイクロ秒単位のON/OFFパルスの配列（すべて正の整数）。Home Assistant側で自動的にプロトコルとHEXコードにデコードされます。V2アーキテクチャでは、マイコン側の負荷を軽減するためこちらの「Dumb Pipe」方式を推奨しています。
+- `raw`: マイクロ秒単位のON/OFFパルスの配列（すべて正の整数）。Home Assistant側で自動的にプロトコルとHEXコードにデコードされます。IR-Trigger では、マイコン側の負荷を軽減するためこちらの「Dumb Pipe」方式を推奨しています。
 
 ---
 
-## 2. ESPHome / Panopticon 経由 (M5Stick / M5Atom 等)
+## 2. ESPHome 経由 (M5Stick / M5Atom 等)
 
 ESPHome デバイスを使用する場合、`http_request` コンポーネントを使用して信号を Home Assistant へ Post します。
 

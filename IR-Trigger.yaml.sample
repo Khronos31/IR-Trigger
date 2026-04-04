@@ -1,24 +1,25 @@
-# IR-Trigger.yaml (True V2 Architecture)
+# IR-Trigger.yaml (設定サンプル)
 
 transmitters:
   tx_study:
     name: "Study Transmitter"
-    type: usb_ad00020p
-    index: 0
-    local_receivers: ["rx_study_usb"]
+    type: esphome
+    node_name: "atom_s3_study"
+    local_receivers: ["rx_study_webhook"]
   tx_living:
     name: "Living Room Transmitter"
-    type: esphome
-    entity_id: remote.atom_s3_living
+    type: nature_remo
+    ip: "192.168.1.30"
 
 receivers:
-  rx_study_usb:
-    name: "Study USB Receiver"
-    type: usb_ad00020p
-    index: 1
-  rx_living_esp:
-    name: "Living Room ESP Receiver"
+  rx_study_webhook:
+    name: "Study Webhook Receiver"
     type: webhook
+  rx_living_nature:
+    name: "Living Room Nature Remo Receiver"
+    type: nature_remo
+    ip: "192.168.1.30"
+    poll_interval: 1.0
 
 devices:
   C_RT1:
