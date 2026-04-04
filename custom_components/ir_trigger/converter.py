@@ -115,12 +115,16 @@ def code_to_raw(code: str) -> list[int]:
     try:
         if name == "NEC":
             val = int(hex_data, 16)
-            # IRremoteESP8266's NEC: MSB first globally, but each 8-bit byte is reversed.
+            # IRremoteESP8266's NEC: LSB first globally when sending pulses, 
+            # but represented as MSB first in hex where each byte is bit-reversed.
             # We must reconstruct the raw LSB-first pulse stream from this format.
             for i in range(0, bit_length, 8):
+                # Extract byte starting from the highest order to match the hex representation
                 byte_val = (val >> (bit_length - 8 - i)) & 0xFF
+                # Reverse the bits in this byte since IRremoteESP8266 reverses them when building the hex
+                rev_byte_val = int(f"{byte_val:08b}"[::-1], 2)
                 for j in range(8):
-                    bits.append((byte_val >> j) & 1)
+                    bits.append((rev_byte_val >> j) & 1)
         elif name == "SONY":
             val = int(hex_data, 16)
             # SONY: MSB First
@@ -243,14 +247,16 @@ def _bits_to_hex(bits: list[int], protocol: str) -> str:
     if protocol == "NEC":
         val = 0
         # NEC: Reconstruct the IRremoteESP8266 32-bit (or custom length) value.
-        # It takes LSB-first received bits, but builds an MSB-first value where each byte is reversed.
+        # It takes LSB-first received bits, but builds an MSB-first value where each byte's bits are reversed.
         for i in range(0, len(bits), 8):
             byte_val = 0
             chunk = bits[i:i+8]
             for j, b in enumerate(chunk):
                 if b:
                     byte_val |= (1 << j)
-            val |= (byte_val << (len(bits) - 8 - i))
+            # Bit reverse the byte_val
+            rev_byte_val = int(f"{byte_val:08b}"[::-1], 2)
+            val |= (rev_byte_val << (len(bits) - 8 - i))
         digits = max(2, (len(bits) + 3) // 4)
         return f"{val:0{digits}X}"
     elif protocol == "SONY":
