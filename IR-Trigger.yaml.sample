@@ -1,4 +1,4 @@
-# IR-Trigger.yaml (設定サンプル)
+# IR-Trigger.yaml
 
 transmitters:
   tx_study:
@@ -10,6 +10,10 @@ transmitters:
     name: "Living Room Transmitter"
     type: nature_remo
     ip: "192.168.1.30"
+  tx_webhook:
+    name: "Webhook Transmitter"
+    type: webhook
+    url: "http://192.168.1.50:8080/tx"
 
 receivers:
   rx_study_webhook:
@@ -47,7 +51,7 @@ global:
     - Recorder_Study
     - Light_Living
   remap:
-    "NEC_56A939C6":
+    "NEC-56A939C6":
       - service: input_select.select_option
         target: { entity_id: input_select.ir_remote_mode }
         data: { option: "Recorder" }
