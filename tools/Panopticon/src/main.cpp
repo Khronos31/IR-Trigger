@@ -17,6 +17,10 @@ int menuCursor = 0;
 bool btnBLongPressedHandled = false;
 bool needsMenuRedraw = true;
 
+// Find My Panopticon variables
+bool isFindingMe = false;
+uint32_t nextBeepTime = 0;
+
 // アプリケーション・プラグイン管理リスト
 std::vector<AppInterface*> apps;
 
@@ -384,6 +388,20 @@ void setup() {
     });
 
     server.addHandler(handler);
+
+    // Endpoints for "Find My Panopticon"
+    server.on("/beep", HTTP_GET, [](AsyncWebServerRequest *request) {
+        isFindingMe = true;
+        M5.Speaker.setVolume(64); // Ensure speaker is loud enough
+        request->send(200, "text/plain", "BEEPING! Press any button to stop.");
+    });
+    
+    server.on("/found", HTTP_GET, [](AsyncWebServerRequest *request) {
+        isFindingMe = false;
+        M5.Speaker.stop();
+        request->send(200, "text/plain", "Glad you found me!");
+    });
+
     if (WiFi.status() == WL_CONNECTED) {
         server.begin();
         Serial.println("HTTP Server started on port 8080");
@@ -397,6 +415,20 @@ void setup() {
 
 void loop() {
     M5.update();
+
+    // Check for any button press (including power) to stop finding me
+    if (isFindingMe && (M5.BtnA.wasPressed() || M5.BtnB.wasPressed() || M5.BtnC.wasPressed() || M5.BtnPWR.wasPressed())) {
+        isFindingMe = false;
+        M5.Speaker.stop();
+    }
+
+    // Continuous non-blocking beep logic
+    if (isFindingMe) {
+        if (millis() > nextBeepTime) {
+            M5.Speaker.tone(2000, 100); // High pitch beep for 100ms
+            nextBeepTime = millis() + 500; // Repeat every 500ms
+        }
+    }
     
     if (currentAppIndex == -1) { // -1 means STATE_MENU
         // Handle Long Press (Reverse Scroll)
