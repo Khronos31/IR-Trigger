@@ -64,7 +64,7 @@ devices:
 global:
   repeat: ["TV_Study"] # 自動リピーター
   remap:
-    "NEC_12345678": # 特定のボタンでサービスを呼ぶ
+    "NEC-12345678": # 特定のボタンでサービスを呼ぶ
       - service: light.toggle
         target: { entity_id: light.living }
 
