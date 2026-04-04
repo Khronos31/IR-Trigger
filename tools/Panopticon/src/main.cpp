@@ -325,7 +325,7 @@ void setup() {
     }
 
     AsyncCallbackJsonWebHandler* handler = new AsyncCallbackJsonWebHandler("/tx", [](AsyncWebServerRequest *request, JsonVariant &json) {
-        if (!json.is<JsonObject>() || !json.as<JsonObject>().containsKey("raw")) {
+        if (!json.is<JsonObject>() || !json["raw"].is<JsonArray>()) {
             request->send(400, "text/plain", "Bad Request: Missing 'raw' array");
             return;
         }
@@ -339,7 +339,7 @@ void setup() {
 
         // Handle optional "code" parameter for beautiful UI display (e.g., "SWITCHBOT-12345678")
         String displayCode = "";
-        if (json.as<JsonObject>().containsKey("code")) {
+        if (json["code"].is<const char*>()) {
             String incomingCode = json["code"].as<String>();
             int hyphenIdx = incomingCode.indexOf('-');
             if (hyphenIdx > 0) {
