@@ -3,10 +3,12 @@ import asyncio
 from abc import ABC, abstractmethod
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+import base64
 from .const import (
     TX_TYPE_ESPHOME,
     TX_TYPE_WEBHOOK,
     TX_TYPE_NATURE_REMO,
+    TX_TYPE_BROADLINK,
     TX_TYPE_MOCK,
     CONF_TYPE,
     CONF_INDEX,
@@ -102,6 +104,61 @@ class NatureRemoTX(TXInterface):
         except Exception as e:
             _LOGGER.error("Error sending Nature Remo TX to %s: %s", self.url, e)
 
+class BroadlinkTX(TXInterface):
+    def __init__(self, hass, entity_id):
+        self.hass = hass
+        if not entity_id:
+            _LOGGER.error("BroadlinkTX initialized without entity_id")
+        self.entity_id = entity_id
+
+    async def async_send(self, code: str):
+        from . import converter
+        raw = converter.code_to_raw(code)
+        if not raw:
+            _LOGGER.error("Failed to convert code to RAW for Broadlink: %s", code)
+            return
+
+        # Convert to Broadlink packet (Base64)
+        packet = bytearray([0x26, 0x00]) # 0x26 = IR, 0x00 = repeat 0 times
+        payload = bytearray()
+        
+        # Broadlink tick calculation: ~32.84us per tick (269/8192 * 1000)
+        for pulse in raw:
+            val = int(round(pulse * 269.0 / 8192.0))
+            if val == 0: val = 1
+            if val <= 255:
+                payload.append(val)
+            else:
+                payload.append(0x00)
+                payload.append((val >> 8) & 0xFF) # Big-Endian
+                payload.append(val & 0xFF)
+                
+        # Trailing gap to signal end of transmission (0x0D 0x05 -> ~109ms)
+        payload.extend([0x00, 0x0D, 0x05])
+        
+        # Length header
+        packet.append(len(payload) & 0xFF)
+        packet.append((len(payload) >> 8) & 0xFF)
+        packet.extend(payload)
+        
+        b64_code = base64.b64encode(packet).decode('utf-8')
+        b64_code_prefixed = f"b64:{b64_code}"
+
+        _LOGGER.info("Sending Broadlink TX: %s via remote.send_command", code)
+        try:
+            await self.hass.services.async_call(
+                "remote", 
+                "send_command", 
+                {
+                    "entity_id": self.entity_id,
+                    "command": [b64_code_prefixed]
+                }, 
+                blocking=False
+            )
+            _LOGGER.info("Broadlink TX sent successfully")
+        except Exception as e:
+            _LOGGER.error("Error sending Broadlink TX to %s: %s", self.entity_id, e)
+
 class MockTX(TXInterface):
     async def async_send(self, code: str):
         _LOGGER.info("[MOCK] Sending: %s", code)
@@ -114,6 +171,8 @@ def create_transmitter(hass: HomeAssistant, config: dict) -> TXInterface:
         return WebhookTX(hass, config.get("url"))
     elif tx_type == TX_TYPE_NATURE_REMO:
         return NatureRemoTX(hass, config.get("ip"))
+    elif tx_type == TX_TYPE_BROADLINK:
+        return BroadlinkTX(hass, config.get(CONF_ENTITY_ID))
     elif tx_type == TX_TYPE_MOCK:
         return MockTX()
     return MockTX() # Default fallback

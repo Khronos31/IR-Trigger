@@ -42,6 +42,7 @@ CONF_WEBHOOK_ID = "webhook_id"
 TX_TYPE_ESPHOME = "esphome"
 TX_TYPE_WEBHOOK = "webhook"
 TX_TYPE_NATURE_REMO = "nature_remo"
+TX_TYPE_BROADLINK = "broadlink"
 TX_TYPE_MOCK = "mock"
 
 # RX Types

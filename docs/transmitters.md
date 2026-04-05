@@ -84,7 +84,24 @@ transmitters:
 
 ---
 
-## 4. テスト・デバッグ用 (Mock)
+## 4. Broadlink 経由
+
+Home Assistant の公式 Broadlink 統合を経由して赤外線を送信する方式です。
+内部的には、`remote.send_command` サービスを使用して Base64 エンコードされたコマンドを送信します。
+
+### 設定例 (`IR-Trigger.yaml`)
+```yaml
+transmitters:
+  tx_broadlink:
+    name: "Living Room Broadlink"
+    type: broadlink
+    entity_id: remote.broadlink_living_room
+```
+※ `entity_id` には対象の Broadlink リモートエンティティを指定してください。
+
+---
+
+## 5. テスト・デバッグ用 (Mock)
 
 実際のデバイスに赤外線を送信せず、Home Assistant のログ上に「どのコードが送信されるはずだったか」を出力するだけの仮想送信機です。
 新しいデバイスやルーティングの設定をテストする際に、実際の家電を動かすことなく安全に動作確認を行うことができます。
