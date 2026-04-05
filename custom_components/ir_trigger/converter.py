@@ -105,11 +105,20 @@ def code_to_raw(code: str) -> list[int]:
     
     if len(parts) >= 3:
         bit_length = int(parts[2])
-    elif "bit_length" in config:
-        bit_length = config["bit_length"]
     else:
-        bit_length = len(hex_data) * 4
-    
+        # Determine bit length dynamically based on hex string length and protocol default
+        hex_bits = len(hex_data) * 4
+        
+        if "bit_length" in config:
+            # Check if the hex string is just padded (e.g. 26bit requires 8 hex chars = 32 bits)
+            if hex_bits <= config["bit_length"] + 7:
+                bit_length = config["bit_length"]
+            else:
+                # If the string is significantly longer than the default (like AEHA 88bit), use string length
+                bit_length = hex_bits
+        else:
+            bit_length = hex_bits
+            
     # Convert HEX to bits using IRremoteESP8266 logic
     bits = []
     try:
