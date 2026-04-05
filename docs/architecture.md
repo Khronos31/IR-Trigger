@@ -1,48 +1,47 @@
-# アーキテクチャ解説 (Architecture)
+# Architecture (The Grand Unification)
 
-IR-Trigger の設計思想と構造について、最新の仕様（TX/RX 分離、RESTful Webhook、明示的パス指定）を基に解説します。
-
----
-
-## 1. 送信機と受信機の完全分離 (TX/RX Separation)
-
-IR-Trigger では、物理的な「送信機能」と「受信機能」を独立したコンポーネントとして扱います。これにより、送信専用デバイス（ESP32 IR送信機など）や受信専用デバイスを柔軟に組み合わせて管理できます。
-
-- **Transmitter (TX)**: 赤外線を送信する物理デバイス。`esphome`, `nature_remo` など。
-- **Receiver (RX)**: 赤外線を受信する物理デバイス。`webhook`, `nature_remo` など。
-- **Device (家電)**: 特定の `transmitter` に紐付けられた仮想的な家電。ボタンやライト、メディアプレーヤーなどのエンティティとして HA に現れます。
-
-この構造により、HAのデバイスレジストリ上でも「送信機」と「受信機」が独立したハードウェアとして可視化され、より直感的な管理が可能になります。
+IR-Trigger is designed to be the ultimate central nervous system for your smart home's infrared communication. By embracing the "Dumb Pipe, Smart Core" philosophy, we offload all complex protocol decoding and routing logic to Home Assistant, freeing up your edge devices (microcontrollers) to simply push and pull raw pulses.
 
 ---
 
-## 2. Webhook 駆動フローと RESTful 設計
+## 1. Absolute Separation of TX and RX (TX/RX Separation)
 
-赤外線信号をエッジデバイス（受信機）が検知してから、Home Assistant がアクションを実行するまでのフローは以下の通りです。
+IR-Trigger treats the physical "Transmission" (TX) and "Reception" (RX) capabilities as completely independent components. This allows you to mix and match TX-only devices (like ESP32 generic blasters) with RX-only units, or combine them as you see fit.
 
-### 2.1. RESTful な信号検知
-1. **受信**: 受信機がコード（例: `NEC_80EA12ED`）を検知。
-2. **Webhook 送信**: 各レシーバー専用のエンドポイント（例: `/api/webhook/rx_study_usb`）に対し、`{"code": "..."}` という軽量なペイロードを Post します。
-3. **イベント発火**: HA 内で `ir_trigger_received` イベントが発行されます。Webhook ID から「どのレシーバーからの信号か」が自動的に特定されます。
+- **Transmitter (TX)**: The physical hardware emitting the IR pulses. `esphome`, `nature_remo`, `webhook`, `broadlink`, etc.
+- **Receiver (RX)**: The physical hardware catching the IR pulses. `webhook`, `nature_remo`, etc.
+- **Device (Appliance)**: A virtual entity bound to a specific `transmitter`. These spawn as standard HA entities like buttons, lights, or media players.
 
-### 2.2. ロジックエンジン (Logic Engine)
-現在の `mode_entity` の状態や設定に基づき、以下のロジックが実行されます：
-
-- **Auto-Repeater (自動リピーター)**:
-  - 受信したコードが `repeat` リストにあるデバイスのものであれば、紐付けられた送信機から即座に同じ信号を再送します。
-- **Binding (動的バインディング)**:
-  - 入力ソース（リモコン）とターゲット（家電）が `bind` されていれば、モードに応じてターゲット側の対応するキーのコードを選択して送信します。
-- **Remapping (リマッピング)**:
-  - 特定のコード受信をトリガーに、別の赤外線送信や HA サービスの呼び出しを柔軟に実行します。
+This architectural split means your transmitters and receivers are visualized as independent hardware nodes in the HA Device Registry, making your setup much more intuitive to manage.
 
 ---
 
-## 3. 信頼性と安定性のための機能
+## 2. Webhook-Driven Flow & RESTful Design
 
-### 3.1. 無限ループ防止 (Loop Prevention)
-赤外線リピーターとして動作させる際、自ら送信した赤外線を自らの受信機で検知し、無限ループ（ハウリング）に陥る危険があります。
-これを防ぐため、`Transmitter` 設定に `local_receivers` リストを指定します。送信実行直前に「今受信したレシーバーが、この送信機の近接レシーバーか」をチェックし、一致する場合は送信をブロックします。
+When an edge device catches a rogue IR pulse, the pipeline to trigger a Home Assistant action is razor-thin and lightning-fast.
 
-### 3.2. 明示的なテンプレートパス (KISS 原則)
-テンプレート指定は `template: "media_player/J-MX100RC"` のように、カテゴリディレクトリを含めたフルパスでの指定を強制します。これにより、意図しない同名ファイルの誤読み込みを防止し、読み込み速度も向上させています。
+### 2.1. RESTful Signal Detection
+1. **Receive**: Your hardware catches a raw pulse array or decoded code (e.g., `NEC-80EA12ED`).
+2. **Webhook POST**: It fires a lightweight JSON payload `{"code": "...", "raw": [...]}` to its dedicated endpoint (e.g., `/api/webhook/rx_study_webhook`).
+3. **Event Ignition**: HA immediately fires the `ir_trigger_received` event. The Webhook ID automatically identifies the source receiver.
 
+### 2.2. The Logic Engine (Smart Core)
+Based on the current state of your `mode_entity` and YAML configs, IR-Trigger executes:
+
+- **Auto-Repeater**:
+  - If the incoming code belongs to a device in the `repeat` list, IR-Trigger instantly echoes the exact same signal out through its assigned transmitter.
+- **Dynamic Binding**:
+  - If a source (remote) and target (appliance) are `bind`ed, IR-Trigger intercepts the source's button press and blasts the corresponding target's code based on the active mode.
+- **Remapping**:
+  - Hijack any IR code to trigger arbitrary HA services or blast different IR signals.
+
+---
+
+## 3. Built for Reliability and Stability
+
+### 3.1. Infinite Loop Prevention (Howling)
+When acting as an IR repeater, there's a risk your receiver catches the very signal your transmitter just blasted, causing an infinite loop.
+IR-Trigger nullifies this. By defining a `local_receivers` list on your `Transmitter` config, the system blocks the transmission if the triggering signal was just caught by a receiver sitting right next to it.
+
+### 3.2. Explicit Template Paths (KISS Principle)
+Template references enforce full-path clarity like `template: "media_player/J-MX100RC"`. No guessing games, no conflicting filenames. It keeps file lookups instantaneous and your configurations bulletproof.

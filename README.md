@@ -1,75 +1,79 @@
 # IR-Trigger
 
-Home Assistant向けの軽量・高レスポンスな赤外線(IR)双方向統合システムです。  
-リモコンの赤外線信号を受信してオートメーションのトリガーにするだけでなく、Home Assistant上の標準エンティティ（Light, MediaPlayer等）やボタンから赤外線を送信し、家電を直接操作することが可能です。
+The ultimate lightweight, high-response, bi-directional Infrared (IR) integration system for Home Assistant.
+IR-Trigger goes beyond simply receiving IR signals to trigger automations. It empowers you to transmit IR signals from standard Home Assistant entities (Lights, Media Players, etc.) and buttons, providing seamless, direct control of your legacy appliances.
+
+[日本語ドキュメントはこちら (Japanese Documentation)](README-ja.md)
 
 ---
 
-## 🚀 特徴
+## 🚀 Features
 
-1. **双方向 IR 通信**
-   - **[受信 (Receivers)](docs/receivers.md)**: 信号を正規化し、HAイベントおよびセンサーに即座に反映。
-   - **[送信 (Transmitters)](docs/transmitters.md)**: Webhook や ESPHome、Nature Remo などを経由して、HA上のエンティティから赤外線を送信。
-2. **Multi-State Machine (マルチ状態管理)**
-   - 複数の `state_machines` を定義でき、AV機器や照明などの独立したモード管理が可能。
-   - 二重発火防止ロジックを搭載し、正確なルーティングを実現。
-3. **Auto-Domain Wrapper (代表エンティティ自動生成)**
-   - リモコン定義に `domain` と `mapping` を追加するだけで、`light` や `media_player` 等の標準エンティティを自動生成。
-4. **辞書エコシステム (テンプレートエンジン)**
-   - `template: "型番"` 指定により、内蔵辞書やユーザー独自の辞書ファイルを読み込んで利用可能。
-   - インターネット上の巨大な **Broadlink Base64 (`B64-`) コード資産** をそのまま流用可能なネイティブサポート。
-5. **ハブ＆スポーク構造 (via_device)**
-   - 送信機（ハブ）と家電デバイス（スポーク）をHAのデバイスレジストリ上で紐付け。
+1. **Bi-directional IR Communication (Dumb Pipe, Smart Core)**
+   - **[Receivers (RX)](docs/receivers.md)**: Instantly normalizes incoming raw signals and reflects them in Home Assistant events and sensors.
+   - **[Transmitters (TX)](docs/transmitters.md)**: Emits raw IR pulses via Webhooks, ESPHome, Nature Remo, or Broadlink directly from your HA entities.
+2. **Multi-State Machine**
+   - Define independent `state_machines` for AV equipment, lighting, and other complex scenarios.
+   - Built-in anti-chattering and debounce logic for flawless signal routing.
+3. **Auto-Domain Wrapper**
+   - Simply define `domain` and `mapping` in your remote dictionary, and IR-Trigger automatically spawns standard Home Assistant entities (like `light` or `media_player`).
+4. **Template Ecosystem (The Dictionary)**
+   - Define `template: "model"` to effortlessly load built-in or custom user dictionaries.
+   - **Native Broadlink Base64 (`B64-`) support**: Copy and paste the massive trove of Broadlink Base64 codes from the internet straight into your dictionaries!
+5. **Hub & Spoke Architecture (via_device)**
+   - Elegantly links transmitters (Hubs) and appliance devices (Spokes) natively within the Home Assistant Device Registry.
 
 ---
 
-## 📦 1. インストール
+## 📦 1. Installation
 
-### カスタム統合のインストール
-1. HACSから、カスタムリポジトリ `https://github.com/Khronos31/IR-Trigger` を追加し、ダウンロードします。
-2. `configuration.yaml` に以下を追記し、Home Assistant を再起動します。
+### Installing the Custom Component
+1. Add the custom repository `https://github.com/Khronos31/IR-Trigger` in HACS and download it.
+2. Add the following to your `configuration.yaml` and restart Home Assistant:
    ```yaml
    ir_trigger:
    ```
 
 ---
 
-## 📝 2. 設定 (IR-Trigger.yaml)
+## 📝 2. Configuration (IR-Trigger.yaml)
+
+Embrace the KISS principle. Keep your config declarative and clean.
 
 ```yaml
-# 1. 送信機 (Transmitters) の定義
+# 1. Transmitters (Physical Devices)
 transmitters:
   tx_study:
-    name: "スタディの送信機"
+    name: "Study Transmitter"
     type: esphome
     node_name: "atom_s3_study"
-    local_receivers: ["rx_study_webhook"] # 無限ループ防止
+    local_receivers: ["rx_study_webhook"] # Infinite loop (howling) prevention
 
-# 2. 受信機 (Receivers) の定義
+# 2. Receivers (Physical Devices)
 receivers:
   rx_study_webhook:
-    name: "スタディのWebhook受信機"
+    name: "Study Webhook Receiver"
     type: webhook
   rx_living_esp:
-    name: "リビングのESP受信機"
-    type: webhook # /api/webhook/rx_living_esp で待機
+    name: "Living Room ESP Receiver"
+    type: webhook # Listens at /api/webhook/rx_living_esp
 
-# 3. 家電デバイス (Devices) の定義
+# 3. Appliance Devices (Virtual Entities)
 devices:
   TV_Study:
-    name: "スタディのテレビ"
+    name: "Study TV"
     transmitter: tx_study
-    template: "media_player/J-MX100RC" # ディレクトリを含めた明示的な指定
+    template: "media_player/J-MX100RC" # Explicit category path
 
-# 4. グローバル設定
+# 4. Global Configuration
 global:
-  repeat: ["TV_Study"] # 自動リピーター
+  repeat: ["TV_Study"] # Auto-repeater
   remap:
-    "NEC-12345678": # 特定のボタンでサービスを呼ぶ
+    "NEC-12345678": # Call HA services on specific button presses
       - service: light.toggle
         target: { entity_id: light.living }
 
-# 5. ステートマシン（モードに応じた動的ルーティング）
+# 5. State Machines (Dynamic Routing based on Mode)
 state_machines:
   - name: "Study AV"
     mode_entity: input_select.ir_remote_mode
@@ -81,27 +85,27 @@ state_machines:
 
 ---
 
-## 📖 3. 辞書ファイル (Templates)
+## 📖 3. Dictionary Files (Templates)
 
-共有のリモコン定義を以下のディレクトリに配置できます。設定ファイルでは、これらのディレクトリからの相対パス（`.yaml` 無し）を指定してください。
+You can place shared remote definitions in the following directories. Specify the relative path (excluding `.yaml`) in your config.
 
-- **内蔵辞書 (Built-in):** `custom_components/ir_trigger/remotes/`
-- **ユーザー辞書 (Custom):** `config/ir_trigger_remotes/`
+- **Built-in Dictionaries:** `custom_components/ir_trigger/remotes/`
+- **Custom User Dictionaries:** `config/ir_trigger_remotes/`
 
-📚 対応リモコン一覧（内蔵辞書）はこちら:  
+📚 Check out the list of supported remotes (built-in):  
 https://github.com/Khronos31/IR-Trigger/tree/main/custom_components/ir_trigger/remotes  
 
-### Broadlink Base64 資産の流用
-インターネット上のオープンなデータベース等で配布されている Broadlink 用の Base64 文字列（例: `JgBQAAAB...`）を、そのまま辞書ファイルに記述して利用できます。
-コードの先頭に `B64-` を付けるだけで、自動的に HA や ESPHome、Nature Remo が解釈できる内部フォーマットに変換して送信されます。
+### Leveraging Broadlink Base64 Assets
+Found a massive database of air conditioner codes in Broadlink Base64 format (e.g., `JgBQAAAB...`) on the internet? Just paste them into your dictionary file!
+Simply prepend `B64-` to the code, and IR-Trigger will automatically decode and translate it into the universal raw pulse format for HA, ESPHome, Nature Remo, or Webhooks.
 
-また、既存のJSON形式のBase64辞書をIR-Trigger用のYAML形式に一括変換するスクリプトも同梱しています。
+Have a JSON file full of Base64 codes? Use the included tool to blast it into a YAML dictionary in seconds:
 ```bash
 python3 tools/scripts/broadlink_json_to_yaml.py input.json output.yaml --domain climate
 ```
 
 ---
 
-## 🛠️ 4. トラブルシューティング
+## 🛠️ 4. Troubleshooting
 
-現在、特に報告されている制限事項はありません。
+No known limitations at this time. Enjoy the Local Push freedom!

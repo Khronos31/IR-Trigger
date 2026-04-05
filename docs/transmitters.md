@@ -1,17 +1,17 @@
-# 送信機セットアップガイド (Transmitters Setup)
+# Transmitter Setup Guide (TX Config)
 
-IR-Trigger では、Home Assistant 上の仮想エンティティ（テレビ、ライト等）の操作に応じて、設定されたエッジデバイス（送信機）に対して赤外線発射の指示を送ります。
+When you interact with a virtual entity (like a TV or Light) in Home Assistant, IR-Trigger commands your designated edge device (Transmitter) to blast the corresponding IR pulses.
 
-以下のいずれかの方式でセットアップしてください。
+Select the transmission mechanism that fits your setup.
 
 ---
 
-## 1. Webhook 経由 (推奨)
+## 1. Webhook (Recommended)
 
-マイコン等で動作する任意の Web サーバに対して POST リクエストを飛ばす方式です。
-HA側でプロトコルからパルス長（Raw）への変換までを行うため、マイコン側（Panopticon など）は送られてきた配列をそのまま発射するだけの非常に軽量な構成（Dumb Pipeアーキテクチャ）にできます。
+Fires a POST request containing a lightweight JSON payload to any listening web server on your microcontroller.
+Because HA handles the translation from Protocol/HEX to raw pulse durations, your microcontroller (like **Panopticon**) acts purely as a "Dumb Pipe", taking the array and pushing it straight to its RMT or PWM hardware.
 
-### 設定例 (`IR-Trigger.yaml`)
+### Configuration (`IR-Trigger.yaml`)
 ```yaml
 transmitters:
   tx_webhook:
@@ -20,8 +20,8 @@ transmitters:
     url: "http://<ESP32_IP>:80/tx"
 ```
 
-### ネットワーク・ペイロード仕様 (JSON)
-Home Assistant からは、指定された URL に以下の形式の JSON ペイロードが POST されます。
+### Network Payload Specs (JSON)
+Home Assistant POSTs the following payload structure to your URL:
 
 ```json
 {
@@ -30,17 +30,17 @@ Home Assistant からは、指定された URL に以下の形式の JSON ペイ
 }
 ```
 
-- **`code`**: 送信プロトコル名と HEX コードを結合した文字列。エッジデバイス側で画面に「何を送信しているか」を表示するためのメタデータとして活用できます。
-- **`raw`**: 赤外線LEDをON/OFFさせるためのマイクロ秒（μs）単位のパルス時間の配列（必ず正の整数）。これを使って `delayMicroseconds` や RMT ペリフェラルで直接赤外線を発射できます。
+- **`code`**: The Protocol and HEX code string. Use this as metadata to render a beautiful "TX: NEC-80EA12ED" log on your edge device's OLED screen.
+- **`raw`**: An array of microsecond (μs) pulse durations. Just feed this directly into `delayMicroseconds` or an RMT peripheral to fire the signal.
 
 ---
 
-## 2. ESPHome 経由
+## 2. ESPHome
 
-Home Assistant の ESPHome 統合を利用して赤外線を送信する方式です。
-内部的には、`esphome.<node_name>_send_raw` というカスタムサービスを呼び出します。
+Transmits signals natively through the official Home Assistant ESPHome integration.
+Under the hood, IR-Trigger dynamically calls a custom ESPHome service named `esphome.<node_name>_send_raw`.
 
-### 設定例 (`IR-Trigger.yaml`)
+### Configuration (`IR-Trigger.yaml`)
 ```yaml
 transmitters:
   tx_study:
@@ -49,8 +49,8 @@ transmitters:
     node_name: "atom_s3_study"
 ```
 
-### 設定例 (`esphome.yaml`)
-ESPHome デバイス側には、`send_raw` アクションを受け付けるための `api` サービスを定義しておく必要があります。
+### ESPHome Configuration (`esphome.yaml`)
+Your ESPHome device must expose an `api` service to catch the `send_raw` action.
 
 ```yaml
 api:
@@ -63,16 +63,15 @@ api:
             carrier_frequency: 38kHz
             code: !lambda "return command;"
 ```
-※ 詳細は `tools/esphome/AtomS3.yaml` を参照してください。
+*Dive deeper:* Check out `tools/esphome/AtomS3.yaml` for a complete reference implementation.
 
 ---
 
-## 3. Nature Remo (Local API) 経由
+## 3. Nature Remo (Local API)
 
-Nature Remo デバイスのローカル API を叩いて直接赤外線を送信する方式です。
-クラウドを経由しないため、非常に高速で安定しています。
+Blasts IR signals directly by calling your Nature Remo's local API. Zero cloud, zero latency, maximum stability.
 
-### 設定例 (`IR-Trigger.yaml`)
+### Configuration (`IR-Trigger.yaml`)
 ```yaml
 transmitters:
   tx_living:
@@ -80,16 +79,15 @@ transmitters:
     type: nature_remo
     ip: "192.168.1.30"
 ```
-※ `ip` には Nature Remo のローカル IP アドレスを指定してください。
+*Note:* Make sure you supply the static local IP address of your Nature Remo.
 
 ---
 
-## 4. Broadlink 経由
+## 4. Broadlink
 
-Home Assistant の公式 Broadlink 統合を経由して赤外線を送信する方式です。
-内部的には、`remote.send_command` サービスを使用して Base64 エンコードされたコマンドを送信します。
+Sends Base64 encoded commands via the official Home Assistant Broadlink integration using the `remote.send_command` service.
 
-### 設定例 (`IR-Trigger.yaml`)
+### Configuration (`IR-Trigger.yaml`)
 ```yaml
 transmitters:
   tx_broadlink:
@@ -97,16 +95,16 @@ transmitters:
     type: broadlink
     entity_id: remote.broadlink_living_room
 ```
-※ `entity_id` には対象の Broadlink リモートエンティティを指定してください。
+*Note:* Provide the entity ID of your Broadlink remote. IR-Trigger handles the precise timing conversions from raw pulses to Broadlink's specific tick encoding automatically.
 
 ---
 
-## 5. テスト・デバッグ用 (Mock)
+## 5. Mock (Test/Debug)
 
-実際のデバイスに赤外線を送信せず、Home Assistant のログ上に「どのコードが送信されるはずだったか」を出力するだけの仮想送信機です。
-新しいデバイスやルーティングの設定をテストする際に、実際の家電を動かすことなく安全に動作確認を行うことができます。
+A virtual transmitter that outputs what *would* have been sent directly into the Home Assistant logs.
+Perfect for verifying your complex routing, state machines, or dictionaries without actually blasting your real-world appliances.
 
-### 設定例 (`IR-Trigger.yaml`)
+### Configuration (`IR-Trigger.yaml`)
 ```yaml
 transmitters:
   tx_debug:
@@ -114,7 +112,6 @@ transmitters:
     type: mock
 ```
 
-送信を実行すると、HAのログに以下のように出力されます：
+Upon transmission, check your HA logs for a trace like this:
 ```text
 [MOCK] Sending: NEC-80EA12ED
-```

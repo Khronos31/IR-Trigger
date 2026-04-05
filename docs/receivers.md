@@ -1,43 +1,45 @@
-# 受信機セットアップガイド (Receivers Setup)
+# Receiver Setup Guide (RX Config)
 
-IR-Trigger はエッジデバイス（受信機）側で信号を受信し、Home Assistant へ通知する仕組みです。以下のいずれかの方法でセットアップしてください。
+IR-Trigger utilizes edge devices (Receivers) to capture signals and seamlessly feed them to Home Assistant. Choose the setup that best suits your hardware.
 
 ---
 
-## 1. Webhook 経由 (推奨)
+## 1. Webhook via Dumb Pipe (Highly Recommended)
 
-Linux デーモンやマイコンから Webhook を飛ばす方式です。特別な設定なしで即座に連動可能です。
+The purest, fastest approach. Have your microcontroller, Linux daemon, or ESP32 blast Webhooks directly into the HA pipeline.
 
-### Webhook エンドポイント
+### Webhook Endpoint
 `http://<HA_IP>:8123/api/webhook/<receiver_id>`
-※ `<receiver_id>` は `IR-Trigger.yaml` の `receivers:` セクションで定義したキー名です。
+*Note:* `<receiver_id>` corresponds directly to the key you define in your `receivers:` block of `IR-Trigger.yaml`.
 
-### ペイロード形式 (JSON)
-Webhookは以下の2つの形式のいずれかを受け付けます。
+### Payload Format (JSON)
+The Webhook accepts two types of payloads depending on where your processing power lies.
 
-**パターン1: デコード済みコード文字列**
+**Pattern 1: Decoded Code String**
 ```json
 {
   "code": "NEC-80EA12ED"
 }
 ```
-- `code`: `送信プロトコル-HEXコード` の形式（すでにエッジデバイス側でデコードが済んでいる場合に使用）。
+- `code`: `Protocol-HEX` string. Use this if your edge device has the brains to decode the signal before sending.
 
-**パターン2: 生のパルス配列（RAW）**
+**Pattern 2: Raw Pulse Array (Dumb Pipe Mode)**
 ```json
 {
   "raw": [9000, 4500, 560, 1680, 560, 560]
 }
 ```
-- `raw`: マイクロ秒単位のON/OFFパルスの配列（すべて正の整数）。Home Assistant側で自動的にプロトコルとHEXコードにデコードされます。IR-Trigger では、マイコン側の負荷を軽減するためこちらの「Dumb Pipe」方式を推奨しています。
+- `raw`: An array of ON/OFF pulse durations in microseconds (all positive integers). Home Assistant acts as the "Smart Core," instantly parsing and decoding the array into Protocol/HEX code under the hood. 
+We strongly recommend this "Dumb Pipe" pattern to minimize the processing load on your microcontrollers.
 
 ---
 
-## 2. ESPHome 経由 (M5Stick / M5Atom 等)
+## 2. ESPHome / Panopticon (M5Stick / M5Atom, etc.)
 
-ESPHome デバイスを使用する場合、`http_request` コンポーネントを使用して信号を Home Assistant へ Post します。
+For those running ESPHome, use the `http_request` component to fire signals directly into HA.
+IR-Trigger also supports **Panopticon**, a specialized, high-performance C++ firmware tailored for flawless, native transmission and reception on ESP32-S3 devices.
 
-### 設定例 (`esphome.yaml`)
+### Example configuration (`esphome.yaml`)
 ```yaml
 http_request:
   timeout: 5s
@@ -67,5 +69,14 @@ remote_receiver:
                   payload += "]}";
                   return payload;
 ```
-※ 詳細は `tools/esphome/AtomS3.yaml` を参照してください。
+*Dive deeper:* Check out `tools/esphome/AtomS3.yaml` for a complete reference implementation.
 
+---
+
+## 3. Nature Remo (Local API)
+
+For users who want zero-cloud dependency with incredible speed and stability. IR-Trigger can scrape signals directly from your Nature Remo device's local API.
+
+### Setup
+Ensure you configure the `type: nature_remo` receiver in your `IR-Trigger.yaml` with the correct `ip` address of your Remo unit.
+IR-Trigger will automatically poll the `/messages` endpoint locally, bypassing the cloud entirely to deliver near-instantaneous triggers.
