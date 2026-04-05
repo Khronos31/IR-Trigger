@@ -308,7 +308,7 @@ void setup() {
 
     // Initialize all apps with IR hardware
     for (auto app : apps) {
-        app->init(irsend);
+        app->init(irsend, irrecv);
     }
 
     WiFi.setHostname("Panopticon");

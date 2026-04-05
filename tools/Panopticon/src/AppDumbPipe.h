@@ -18,6 +18,7 @@ private:
     bool needsBackgroundRedraw = true;
 
     IRsend* irsend = nullptr;
+    IRrecv* irrecv = nullptr;
     std::vector<uint16_t> pendingTxRaw;
     String pendingTxCodeStr = ""; // Holds beautiful string like "SWITCHBOT 0x12345678"
     bool hasPendingTx = false;
@@ -29,8 +30,9 @@ public:
         return "1. Dumb Pipe";
     }
 
-    virtual void init(IRsend* tx) override {
+    virtual void init(IRsend* tx, IRrecv* rx) override {
         irsend = tx;
+        irrecv = rx;
     }
 
     virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) override {
@@ -116,14 +118,27 @@ public:
         // TX Processing
         if (hasPendingTx) {
             if (irsend) {
-                // Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission
+                // 1. Temporarily disable IR reception to prevent "self-feedback loop" where the ESP32
+                // receives its own bright IR flashes and triggers endless RX interrupts, starving RMT buffers.
+                if (irrecv) {
+                    irrecv->disableIRIn();
+                }
+
+                // 2. Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission
                 delay(20);
                 
+                // 3. Send the signal via RMT hardware
                 irsend->sendRaw(pendingTxRaw.data(), pendingTxRaw.size(), 38);
                 
-                // Block the main thread (UI drawing) while RMT interrupts are busy transmitting the long array.
-                // Assuming roughly 1ms average per pulse (mark+space pair), pendingTxRaw.size() ms is safe.
+                // 4. Block the main thread (UI drawing) while RMT interrupts are busy transmitting.
+                // This ensures we don't interfere with the RMT buffer refills during long signals (e.g. AC codes).
+                // Average pulse is ~1ms (mark+space), so pendingTxRaw.size() ms is a safe blocking window.
                 delay(pendingTxRaw.size() + 20);
+
+                // 5. Re-enable reception safely
+                if (irrecv) {
+                    irrecv->enableIRIn();
+                }
 
                 if (!pendingTxCodeStr.isEmpty() && !pendingTxCodeStr.startsWith("RAW_")) {
                     int spaceIdx = pendingTxCodeStr.indexOf(' ');

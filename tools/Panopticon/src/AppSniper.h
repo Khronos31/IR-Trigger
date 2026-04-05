@@ -1,6 +1,8 @@
 #pragma once
 #include <M5Unified.h>
 #include <vector>
+#include <IRremoteESP8266.h>
+#include <IRrecv.h>
 #include <IRsend.h>
 #include "Config.h"
 #include "AppInterface.h"
@@ -12,6 +14,7 @@ private:
     bool needsBackgroundRedraw = true;
     uint32_t visualFeedbackEndTime = 0;
     IRsend* irsend = nullptr;
+    IRrecv* irrecv = nullptr;
 
 public:
     AppSniper() {}
@@ -20,8 +23,9 @@ public:
         return "2. Sniper";
     }
 
-    virtual void init(IRsend* tx) override {
+    virtual void init(IRsend* tx, IRrecv* rx) override {
         irsend = tx;
+        irrecv = rx;
     }
 
     virtual void setup() override {
@@ -80,6 +84,11 @@ public:
         if (M5.BtnA.wasPressed()) {
             if (hasLoadedRaw && visualFeedbackEndTime == 0) {
                 if (irsend) {
+                    // Disable RX to prevent self-feedback loop during TX
+                    if (irrecv) {
+                        irrecv->disableIRIn();
+                    }
+
                     // Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission
                     delay(20);
                     
@@ -88,6 +97,11 @@ public:
                     
                     // Block the main thread (UI drawing) while RMT interrupts are busy transmitting.
                     delay(loadedRaw.size() + 20);
+
+                    // Re-enable RX
+                    if (irrecv) {
+                        irrecv->enableIRIn();
+                    }
                 }
                 hasLoadedRaw = false; 
                 

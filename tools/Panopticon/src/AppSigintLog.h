@@ -16,6 +16,7 @@ private:
     uint32_t visualFeedbackEndTime = 0;
     bool needsBackgroundRedraw = true;
     IRsend* irsend = nullptr;
+    IRrecv* irrecv = nullptr;
 
     // Buffer to hold log entries in memory before flushing to disk
     std::vector<String> sessionLogsBuffer;
@@ -29,8 +30,9 @@ public:
         return "3. Sigint Log";
     }
 
-    virtual void init(IRsend* tx) override {
+    virtual void init(IRsend* tx, IRrecv* rx) override {
         irsend = tx;
+        irrecv = rx;
     }
 
     virtual void setup() override {
@@ -180,6 +182,11 @@ public:
              if (!btnALongPressedHandled) {
                  if (!latestCode.isEmpty() && latestRaw.size() > 0) {
                      if (irsend) {
+                         // Disable RX to prevent self-feedback loop
+                         if (irrecv) {
+                             irrecv->disableIRIn();
+                         }
+
                          // Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission
                          delay(20);
                          
@@ -188,6 +195,11 @@ public:
                          
                          // Block the main thread (UI drawing) while RMT interrupts are busy transmitting.
                          delay(latestRaw.size() + 20);
+
+                         // Re-enable RX safely
+                         if (irrecv) {
+                             irrecv->enableIRIn();
+                         }
                      }
                      M5.Display.fillCircle(M5.Display.width() - 10, 10, 5, TFT_CYAN);
                      visualFeedbackEndTime = millis() + 50;

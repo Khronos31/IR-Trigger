@@ -1,8 +1,11 @@
 #pragma once
 
 #include <M5Unified.h>
-#include <IRsend.h>
 #include <vector>
+
+// Forward declarations
+class IRsend;
+class IRrecv;
 
 // 汎用アプリの抽象基底インターフェース
 // これを継承することで、main.cppは具体的なクラス名を知らなくても
@@ -14,8 +17,9 @@ public:
     // アプリの表示名 (例: "1. Dumb Pipe")
     virtual const char* getName() const = 0;
 
-    // ハードウェア（送信）へのポインタを受け取る
-    virtual void init(IRsend* tx) = 0;
+    // ハードウェア（送信と受信）へのポインタを受け取る
+    // 送信時に自爆受信を防ぐために rx も必要
+    virtual void init(IRsend* tx, IRrecv* rx) = 0;
 
     // アプリが選択された時の初期化処理
     virtual void setup() = 0;

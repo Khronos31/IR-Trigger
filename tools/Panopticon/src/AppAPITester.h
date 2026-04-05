@@ -2,6 +2,9 @@
 #include <M5Unified.h>
 #include <vector>
 #include <LittleFS.h>
+#include <IRremoteESP8266.h>
+#include <IRrecv.h>
+#include <IRsend.h>
 #include "Config.h"
 #include "AppInterface.h"
 
@@ -19,7 +22,7 @@ public:
         return "4. API Tester";
     }
 
-    virtual void init(IRsend* tx) override {
+    virtual void init(IRsend* tx, IRrecv* rx) override {
         // Not actually sending IR in this app, just logging TX payloads
     }
 
