@@ -1,5 +1,6 @@
 import logging
 import math
+import base64
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,6 +86,35 @@ def raw_to_code(raw: list[int]) -> str:
 
 def code_to_raw(code: str) -> list[int]:
     """Convert code string back to RAW pulse array."""
+    if code.startswith("B64-"):
+        try:
+            b64_str = code[4:]
+            b = base64.b64decode(b64_str)
+            if len(b) < 4:
+                return []
+            # Skip Broadlink packet header: 0x26 0x00 Length_L Length_H
+            payload = b[4:]
+            raw = []
+            i = 0
+            while i < len(payload):
+                val = payload[i]
+                i += 1
+                if val == 0x00 and i + 1 < len(payload):
+                    val = (payload[i] << 8) | payload[i+1] # Big-Endian
+                    i += 2
+                
+                # Stop processing if we hit trailing bytes (typically 0x0D 0x05)
+                # But we can also just convert them as pulses which will just be long gap at the end
+                if i >= len(payload) - 2 and payload[i-1] == 0x0D and payload[i] == 0x05:
+                    break
+
+                us = int(round(val * 8192.0 / 269.0))
+                raw.append(us)
+            return raw
+        except Exception as e:
+            _LOGGER.error("Failed to decode Broadlink Base64 code: %s", e)
+            return []
+
     if code.startswith("RAW-"):
         try:
             return [int(x) for x in code[4:].split(",")]
