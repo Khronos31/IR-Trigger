@@ -39,3 +39,12 @@ public:
     // HAからWebhooks経由で赤外線送信命令(TX)を受け取ったときのコールバック
     virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) {}
 };
+
+// =========================================================================================
+// Global Utility Functions
+// =========================================================================================
+
+// Centralized IR Transmission Sequence
+// Provides physical hardware calibration (+30/-30us bias), carrier frequency compensation (~39kHz output),
+// and safeguards against Self-Feedback Loops (RX Disable/Enable) during heavy RMT activity.
+extern void safe_ir_send(IRsend* tx, IRrecv* rx, const std::vector<uint16_t>& rawData);

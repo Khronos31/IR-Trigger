@@ -69,6 +69,51 @@ void enqueueWebhook(const String& payload) {
     }
 }
 
+// -----------------------------------------------------------------------------------------
+// Centralized IR Transmission Sequence (Hardware Calibration & Protection)
+// -----------------------------------------------------------------------------------------
+void safe_ir_send(IRsend* tx, IRrecv* rx, const std::vector<uint16_t>& rawData) {
+    if (!tx || rawData.empty()) return;
+
+    // 1. Temporarily disable IR reception to prevent "self-feedback loop" where the ESP32
+    //    receives its own bright IR flashes and triggers endless RX interrupts, starving RMT buffers.
+    if (rx) {
+        rx->disableIRIn();
+    }
+
+    // 2. Apply fine-grained hardware calibration for ESP32-S3 + U002 IR Unit.
+    //    Analysis shows a physical bias where Marks are shortened by ~30us and Spaces extended by ~30us.
+    std::vector<uint16_t> calibratedRaw = rawData;
+    for (size_t i = 0; i < calibratedRaw.size(); i++) {
+        if (i % 2 == 0) { // Mark (ON)
+            calibratedRaw[i] += 30;
+        } else {          // Space (OFF)
+            if (calibratedRaw[i] > 30) {
+                calibratedRaw[i] -= 30;
+            }
+        }
+    }
+
+    // 3. Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission.
+    delay(20);
+
+    // 4. Send the signal via RMT hardware.
+    //    ESP32-S3 clock scaling / RMT divider issues cause 38kHz requested to actually output as ~35kHz.
+    //    We intentionally request 41kHz here to achieve a ~39kHz carrier frequency in the physical world,
+    //    which passes through 38kHz-40kHz bandpass filters much better than 37kHz.
+    tx->sendRaw(calibratedRaw.data(), calibratedRaw.size(), 41);
+
+    // 5. Block the main thread (UI drawing) while RMT interrupts are busy transmitting.
+    //    This ensures we don't interfere with the RMT buffer refills during long signals (e.g. AC codes).
+    //    Average pulse is ~1ms (mark+space), so calibratedRaw.size() ms is a safe blocking window.
+    delay(calibratedRaw.size() + 20);
+
+    // 6. Re-enable reception safely.
+    if (rx) {
+        rx->enableIRIn();
+    }
+}
+
 // Custom decoder for unknown AEHA-like signals
 String decode_custom_aeha(const std::vector<uint16_t>& raw) {
     // Basic AEHA leader is ~3200us ON, ~1600us OFF.

@@ -118,43 +118,8 @@ public:
         // TX Processing
         if (hasPendingTx) {
             if (irsend) {
-                // 1. Temporarily disable IR reception to prevent "self-feedback loop" where the ESP32
-                // receives its own bright IR flashes and triggers endless RX interrupts, starving RMT buffers.
-                if (irrecv) {
-                    irrecv->disableIRIn();
-                }
-
-                // 2. Apply fine-grained hardware calibration for ESP32-S3 + U002 IR Unit
-                //    Analysis shows a physical bias where Marks are shortened by ~30us and Spaces extended by ~30us.
-                std::vector<uint16_t> calibratedRaw = pendingTxRaw;
-                for (size_t i = 0; i < calibratedRaw.size(); i++) {
-                    if (i % 2 == 0) { // Mark (ON)
-                        calibratedRaw[i] += 30;
-                    } else { // Space (OFF)
-                        if (calibratedRaw[i] > 30) {
-                            calibratedRaw[i] -= 30;
-                        }
-                    }
-                }
-
-                // 3. Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission
-                delay(20);
-                
-                // 4. Send the signal via RMT hardware
-                //    ESP32-S3 clock scaling / RMT divider issues cause 38kHz requested to actually output as ~35kHz.
-                //    We intentionally request 41kHz here to achieve a ~39kHz carrier frequency in the physical world,
-                //    which passes through 38kHz-40kHz bandpass filters much better than 37kHz.
-                irsend->sendRaw(calibratedRaw.data(), calibratedRaw.size(), 41);
-                
-                // 5. Block the main thread (UI drawing) while RMT interrupts are busy transmitting.
-                // This ensures we don't interfere with the RMT buffer refills during long signals (e.g. AC codes).
-                // Average pulse is ~1ms (mark+space), so pendingTxRaw.size() ms is a safe blocking window.
-                delay(pendingTxRaw.size() + 20);
-
-                // 5. Re-enable reception safely
-                if (irrecv) {
-                    irrecv->enableIRIn();
-                }
+                // Use the centralized DRY function for sending IR signals safely
+                safe_ir_send(irsend, irrecv, pendingTxRaw);
 
                 if (!pendingTxCodeStr.isEmpty() && !pendingTxCodeStr.startsWith("RAW_")) {
                     int spaceIdx = pendingTxCodeStr.indexOf(' ');
