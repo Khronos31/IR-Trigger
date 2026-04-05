@@ -7,6 +7,7 @@
 // Forward declarations
 class IRsend;
 class IRrecv;
+class AsyncCallbackJsonWebHandler;
 
 // 汎用アプリの抽象基底インターフェース
 // これを継承することで、main.cppは具体的なクラス名を知らなくても

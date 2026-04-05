@@ -33,6 +33,47 @@ decode_results results;
 // Global Webhook Queue (Producer-Consumer)
 QueueHandle_t globalWebhookQueue = nullptr;
 
+// Helper: Parse and sanitize incoming IR payload (raw array) from HA webhook
+bool parseAndSanitizeTxJson(JsonVariant& json, std::vector<uint16_t>& outRaw, String& outCode) {
+    if (!json.is<JsonObject>() || !json["raw"].is<JsonArray>()) {
+        return false;
+    }
+
+    JsonArray rawArr = json["raw"].as<JsonArray>();
+    outRaw.clear();
+    outRaw.reserve(rawArr.size());
+    
+    for (JsonVariant v : rawArr) {
+        uint32_t val = abs(v.as<int>()); 
+        if (val == 0) {
+            DEBUG_PRINTLN("TX Sanitizer: Invalid 0-pulse detected. Truncating payload.");
+            break;
+        }
+        if (val > 30000) {
+            val = 30000;
+        }
+        outRaw.push_back(static_cast<uint16_t>(val));
+    }
+
+    if (outRaw.size() % 2 != 0) {
+        outRaw.push_back(10000); // Dummy space
+    }
+
+    outCode = "";
+    if (json["code"].is<const char*>()) {
+        String incomingCode = json["code"].as<String>();
+        int hyphenIdx = incomingCode.indexOf('-');
+        if (hyphenIdx > 0) {
+            String protocol = incomingCode.substring(0, hyphenIdx);
+            String hexVal = incomingCode.substring(hyphenIdx + 1);
+            outCode = protocol + " 0x" + hexVal;
+        } else {
+            outCode = incomingCode; 
+        }
+    }
+    return true;
+}
+
 void globalWebhookTask(void* pvParameters) {
     QueueHandle_t queue = (QueueHandle_t)pvParameters;
     String* payloadPtr;
@@ -338,76 +379,6 @@ void setup() {
         Serial.println(WiFi.localIP());
     }
 
-    AsyncCallbackJsonWebHandler* handler = new AsyncCallbackJsonWebHandler("/tx", [](AsyncWebServerRequest *request, JsonVariant &json) {
-        if (!json.is<JsonObject>() || !json["raw"].is<JsonArray>()) {
-            request->send(400, "text/plain", "Bad Request: Missing 'raw' array");
-            return;
-        }
-
-        JsonArray rawArr = json["raw"].as<JsonArray>();
-        std::vector<uint16_t> tempRaw;
-        tempRaw.reserve(rawArr.size());
-        for (JsonVariant v : rawArr) {
-            uint32_t val = abs(v.as<int>()); // int could be large, uint32_t to safely hold 40000+
-            // ESP32 RMT peripheral uses 15-bit representation (~32767us maximum per item).
-            // A pulse like 40000us (NEC repeat gap) will overflow, causing a completely broken signal transmission.
-            // Clip to 30000us max to preserve the "long gap" nature while avoiding RMT hardware overflow.
-            if (val > 30000) {
-                val = 30000;
-            }
-            tempRaw.push_back(static_cast<uint16_t>(val));
-        }
-
-        // Handle optional "code" parameter for beautiful UI display (e.g., "SWITCHBOT-12345678")
-        String displayCode = "";
-        if (json["code"].is<const char*>()) {
-            String incomingCode = json["code"].as<String>();
-            int hyphenIdx = incomingCode.indexOf('-');
-            if (hyphenIdx > 0) {
-                String protocol = incomingCode.substring(0, hyphenIdx);
-                String hexVal = incomingCode.substring(hyphenIdx + 1);
-                displayCode = protocol + " 0x" + hexVal;
-            } else {
-                displayCode = incomingCode; // Fallback
-            }
-        }
-
-                        // Route TX to the currently active app via the AppInterface standard method
-                        bool handled = false;
-                        if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
-                            String appName = apps[currentAppIndex]->getName();
-
-                            if (appName.indexOf("Dumb Pipe") >= 0 || appName.indexOf("API Tester") >= 0) {
-                                apps[currentAppIndex]->onTxReceived(tempRaw, displayCode);
-                                request->send(200, "text/plain", "OK: TX Sent to App");
-                                handled = true;
-                            } 
-                            else if (appName.indexOf("Sniper") >= 0) {
-                                apps[currentAppIndex]->onTxReceived(tempRaw, displayCode);
-                                
-                                // Safe async webhook post via global queue
-                                JsonDocument docOut;
-                                docOut["Device"] = "Panopticon_Sniper";
-                                docOut["Button"] = "Target_Locked";
-                                JsonArray rawArrayOut = docOut["raw"].to<JsonArray>();
-                                for (size_t k = 0; k < tempRaw.size(); k++) rawArrayOut.add(tempRaw[k]);
-                                
-                                String payload;
-                                serializeJson(docOut, payload);
-                                enqueueWebhook(payload);
-
-                                request->send(200, "text/plain", "OK: Loaded into Sniper");
-                                handled = true;
-                            }
-                        }
-
-                        if (!handled) {
-                            request->send(400, "text/plain", "App not ready to receive TX");
-                        }
-    });
-
-    server.addHandler(handler);
-
     // Endpoints for "Find My Panopticon"
     server.on("/beep", HTTP_GET, [](AsyncWebServerRequest *request) {
         isFindingMe = true;
@@ -554,6 +525,7 @@ void loop() {
             if (apps.size() > 0 && menuCursor >= 0 && menuCursor < apps.size()) {
                 currentAppIndex = menuCursor;
                 apps[currentAppIndex]->setup();
+                apps[currentAppIndex]->setupWeb(&server);
                 apps[currentAppIndex]->draw(true);
             }
         }
@@ -568,6 +540,9 @@ void loop() {
         
         // Handle transition back to menu
         if (returnToMenu) {
+            if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
+                apps[currentAppIndex]->teardownWeb(&server);
+            }
             currentAppIndex = -1;
             needsMenuRedraw = true;
             drawMenu(true);

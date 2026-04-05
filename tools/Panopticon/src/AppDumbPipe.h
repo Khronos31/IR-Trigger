@@ -9,6 +9,10 @@
 #include <ArduinoJson.h>
 #include "Config.h"
 #include "AppInterface.h"
+#include <AsyncJson.h>
+
+// Forward declaration of parsing helper from main.cpp
+bool parseAndSanitizeTxJson(JsonVariant& json, std::vector<uint16_t>& outRaw, String& outCode);
 
 class AppDumbPipe : public AppInterface {
 private:
@@ -22,6 +26,8 @@ private:
     std::vector<uint16_t> pendingTxRaw;
     String pendingTxCodeStr = ""; // Holds beautiful string like "SWITCHBOT 0x12345678"
     bool hasPendingTx = false;
+    
+    AsyncCallbackJsonWebHandler* txHandler = nullptr;
 
 public:
     AppDumbPipe() {}
@@ -47,6 +53,33 @@ public:
         needsBackgroundRedraw = true;
         
         addLog("SYS: DUMB PIPE READY");
+    }
+
+    virtual void setupWeb(AsyncWebServer* server) override {
+        if (txHandler) return; // Safety check
+        
+        txHandler = new AsyncCallbackJsonWebHandler("/tx", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+            std::vector<uint16_t> tempRaw;
+            String displayCode;
+            
+            if (!parseAndSanitizeTxJson(json, tempRaw, displayCode)) {
+                request->send(400, "text/plain", "Bad Request: Missing 'raw' array");
+                return;
+            }
+            
+            this->onTxReceived(tempRaw, displayCode);
+            request->send(200, "text/plain", "OK: TX Loaded into Dumb Pipe");
+        });
+        
+        server->addHandler(txHandler);
+    }
+
+    virtual void teardownWeb(AsyncWebServer* server) override {
+        if (txHandler) {
+            server->removeHandler(txHandler);
+            delete txHandler;
+            txHandler = nullptr;
+        }
     }
 
     void addLog(const String& msg) {

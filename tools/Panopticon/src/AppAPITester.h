@@ -7,6 +7,10 @@
 #include <IRsend.h>
 #include "Config.h"
 #include "AppInterface.h"
+#include <AsyncJson.h>
+
+// Forward declaration of parsing helper from main.cpp
+bool parseAndSanitizeTxJson(JsonVariant& json, std::vector<uint16_t>& outRaw, String& outCode);
 
 class AppAPITester : public AppInterface {
 private:
@@ -14,6 +18,8 @@ private:
     uint32_t txCount = 0;
     String currentLogFile = "";
     std::vector<String> sessionLogsBuffer;
+    
+    AsyncCallbackJsonWebHandler* txHandler = nullptr;
 
 public:
     AppAPITester() {}
@@ -39,6 +45,33 @@ public:
             DEBUG_PRINTLN("Created new TX log file: " + currentLogFile);
         } else {
             DEBUG_PRINTLN("Failed to create TX log file: " + currentLogFile);
+        }
+    }
+
+    virtual void setupWeb(AsyncWebServer* server) override {
+        if (txHandler) return;
+        
+        txHandler = new AsyncCallbackJsonWebHandler("/tx", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+            std::vector<uint16_t> tempRaw;
+            String displayCode;
+            
+            if (!parseAndSanitizeTxJson(json, tempRaw, displayCode)) {
+                request->send(400, "text/plain", "Bad Request: Missing 'raw' array");
+                return;
+            }
+            
+            this->onTxReceived(tempRaw, displayCode);
+            request->send(200, "text/plain", "OK: TX Logged by API Tester");
+        });
+        
+        server->addHandler(txHandler);
+    }
+
+    virtual void teardownWeb(AsyncWebServer* server) override {
+        if (txHandler) {
+            server->removeHandler(txHandler);
+            delete txHandler;
+            txHandler = nullptr;
         }
     }
 

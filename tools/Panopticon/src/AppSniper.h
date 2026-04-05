@@ -6,6 +6,13 @@
 #include <IRsend.h>
 #include "Config.h"
 #include "AppInterface.h"
+#include <AsyncJson.h>
+
+// Forward declaration of parsing helper from main.cpp
+bool parseAndSanitizeTxJson(JsonVariant& json, std::vector<uint16_t>& outRaw, String& outCode);
+
+// Forward declaration of enqueue helper from main.cpp
+void enqueueWebhook(const String& payload);
 
 class AppSniper : public AppInterface {
 private:
@@ -15,6 +22,8 @@ private:
     uint32_t visualFeedbackEndTime = 0;
     IRsend* irsend = nullptr;
     IRrecv* irrecv = nullptr;
+    
+    AsyncCallbackJsonWebHandler* txHandler = nullptr;
 
 public:
     AppSniper() {}
@@ -33,6 +42,45 @@ public:
         hasLoadedRaw = false;
         needsBackgroundRedraw = true;
         visualFeedbackEndTime = 0;
+    }
+
+    virtual void setupWeb(AsyncWebServer* server) override {
+        if (txHandler) return;
+        
+        txHandler = new AsyncCallbackJsonWebHandler("/tx", [this](AsyncWebServerRequest *request, JsonVariant &json) {
+            std::vector<uint16_t> tempRaw;
+            String displayCode;
+            
+            if (!parseAndSanitizeTxJson(json, tempRaw, displayCode)) {
+                request->send(400, "text/plain", "Bad Request: Missing 'raw' array");
+                return;
+            }
+            
+            this->onTxReceived(tempRaw, displayCode);
+            
+            // Safe async webhook post via global queue
+            JsonDocument docOut;
+            docOut["Device"] = "Panopticon_Sniper";
+            docOut["Button"] = "Target_Locked";
+            JsonArray rawArrayOut = docOut["raw"].to<JsonArray>();
+            for (size_t k = 0; k < tempRaw.size(); k++) rawArrayOut.add(tempRaw[k]);
+            
+            String payload;
+            serializeJson(docOut, payload);
+            enqueueWebhook(payload);
+
+            request->send(200, "text/plain", "OK: Loaded into Sniper");
+        });
+        
+        server->addHandler(txHandler);
+    }
+
+    virtual void teardownWeb(AsyncWebServer* server) override {
+        if (txHandler) {
+            server->removeHandler(txHandler);
+            delete txHandler;
+            txHandler = nullptr;
+        }
     }
 
     virtual void draw(bool fullDraw = false) override {
