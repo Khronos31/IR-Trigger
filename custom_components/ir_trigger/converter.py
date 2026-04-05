@@ -11,11 +11,11 @@ TOLERANCE = 0.30 # Increased tolerance for hardware variance
 
 PROTOCOLS = {
     "SWITCHBOT": {
-        "leader_on": 9000,
-        "leader_off": 4500,
-        "bit_on": 600,
-        "bit0_off": 800,
-        "bit1_off": 2200,
+        "leader_on": 8700,
+        "leader_off": 4450,
+        "bit_on": 670,
+        "bit0_off": 715,
+        "bit1_off": 2070,
         "threshold": 1400,
         "bit_length": 26,
     },
@@ -170,7 +170,7 @@ def code_to_raw(code: str) -> list[int]:
         
         # 🛡️ NEC系特有のリピートコード付与
         if name == "SWITCHBOT":
-            raw.append(36500) # Broadlink learned gap (~36.5ms)
+            raw.append(35500) # Broadlink learned gap (~35.5ms)
             raw.append(config["leader_on"])
             raw.append(config["leader_off"] // 2)
             raw.append(config["bit_on"])
