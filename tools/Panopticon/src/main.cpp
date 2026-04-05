@@ -33,47 +33,6 @@ decode_results results;
 // Global Webhook Queue (Producer-Consumer)
 QueueHandle_t globalWebhookQueue = nullptr;
 
-// Helper: Parse and sanitize incoming IR payload (raw array) from HA webhook
-bool parseAndSanitizeTxJson(JsonVariant& json, std::vector<uint16_t>& outRaw, String& outCode) {
-    if (!json.is<JsonObject>() || !json["raw"].is<JsonArray>()) {
-        return false;
-    }
-
-    JsonArray rawArr = json["raw"].as<JsonArray>();
-    outRaw.clear();
-    outRaw.reserve(rawArr.size());
-    
-    for (JsonVariant v : rawArr) {
-        uint32_t val = abs(v.as<int>()); 
-        if (val == 0) {
-            DEBUG_PRINTLN("TX Sanitizer: Invalid 0-pulse detected. Truncating payload.");
-            break;
-        }
-        if (val > 30000) {
-            val = 30000;
-        }
-        outRaw.push_back(static_cast<uint16_t>(val));
-    }
-
-    if (outRaw.size() % 2 != 0) {
-        outRaw.push_back(10000); // Dummy space
-    }
-
-    outCode = "";
-    if (json["code"].is<const char*>()) {
-        String incomingCode = json["code"].as<String>();
-        int hyphenIdx = incomingCode.indexOf('-');
-        if (hyphenIdx > 0) {
-            String protocol = incomingCode.substring(0, hyphenIdx);
-            String hexVal = incomingCode.substring(hyphenIdx + 1);
-            outCode = protocol + " 0x" + hexVal;
-        } else {
-            outCode = incomingCode; 
-        }
-    }
-    return true;
-}
-
 void globalWebhookTask(void* pvParameters) {
     QueueHandle_t queue = (QueueHandle_t)pvParameters;
     String* payloadPtr;
@@ -379,6 +338,80 @@ void setup() {
         Serial.println(WiFi.localIP());
     }
 
+    // ==============================================================================
+    // Permanent, Centralized /tx Webhook Handler
+    // ==============================================================================
+    AsyncCallbackJsonWebHandler* handler = new AsyncCallbackJsonWebHandler("/tx", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        if (!json.is<JsonObject>() || !json["raw"].is<JsonArray>()) {
+            request->send(400, "text/plain", "Bad Request: Missing 'raw' array");
+            return;
+        }
+
+        JsonArray rawArr = json["raw"].as<JsonArray>();
+        std::vector<uint16_t> tempRaw;
+        tempRaw.reserve(rawArr.size());
+        
+        for (JsonVariant v : rawArr) {
+            uint32_t val = abs(v.as<int>()); // safely cast int to avoid negative values
+            
+            // 1. RMT Crash Protection
+            // A pulse of length 0 will crash the RMT driver or cause an infinite loop.
+            // It indicates data corruption, so we truncate the array here.
+            if (val == 0) {
+                DEBUG_PRINTLN("TX Sanitizer: Invalid 0-pulse detected. Truncating payload.");
+                break;
+            }
+            
+            // 2. RMT Overflow Protection
+            // ESP32 RMT uses 15-bit representation (~32767us max per item).
+            // A long gap like 40000us (NEC repeat) or a 65535 overflow will break transmission.
+            // Clip to 30000us max to preserve the "gap" nature safely.
+            if (val > 30000) {
+                val = 30000;
+            }
+            
+            tempRaw.push_back(static_cast<uint16_t>(val));
+        }
+
+        // 3. RMT hardware expects Mark and Space to come in pairs (even size).
+        if (tempRaw.size() % 2 != 0) {
+            tempRaw.push_back(10000); // 10ms dummy space
+        }
+
+        // Handle optional "code" parameter for beautiful UI display
+        String displayCode = "";
+        if (json["code"].is<const char*>()) {
+            String incomingCode = json["code"].as<String>();
+            int hyphenIdx = incomingCode.indexOf('-');
+            if (hyphenIdx > 0) {
+                String protocol = incomingCode.substring(0, hyphenIdx);
+                String hexVal = incomingCode.substring(hyphenIdx + 1);
+                displayCode = protocol + " 0x" + hexVal;
+            } else {
+                displayCode = incomingCode; 
+            }
+        }
+
+        // Route the clean, sanitized TX signal to the currently active app
+        if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
+            String appName = apps[currentAppIndex]->getName();
+            
+            // Allow only apps that are designed to receive TX payloads
+            if (appName.indexOf("Dumb Pipe") >= 0 || 
+                appName.indexOf("API Tester") >= 0 || 
+                appName.indexOf("Sniper") >= 0) {
+                
+                apps[currentAppIndex]->onTxReceived(tempRaw, displayCode);
+                request->send(200, "text/plain", "OK: TX Sent to App (" + appName + ")");
+                return;
+            }
+        }
+
+        request->send(400, "text/plain", "App not ready to receive TX");
+    });
+
+    server.addHandler(handler);
+
     // Endpoints for "Find My Panopticon"
     server.on("/beep", HTTP_GET, [](AsyncWebServerRequest *request) {
         isFindingMe = true;
@@ -525,7 +558,6 @@ void loop() {
             if (apps.size() > 0 && menuCursor >= 0 && menuCursor < apps.size()) {
                 currentAppIndex = menuCursor;
                 apps[currentAppIndex]->setup();
-                apps[currentAppIndex]->setupWeb(&server);
                 apps[currentAppIndex]->draw(true);
             }
         }
@@ -540,9 +572,6 @@ void loop() {
         
         // Handle transition back to menu
         if (returnToMenu) {
-            if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
-                apps[currentAppIndex]->teardownWeb(&server);
-            }
             currentAppIndex = -1;
             needsMenuRedraw = true;
             drawMenu(true);

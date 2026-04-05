@@ -26,13 +26,6 @@ public:
     // アプリが選択された時（メニューから開かれた時）の初期化処理
     virtual void setup() = 0;
 
-    // アプリ専用のWebエンドポイント（/tx等）を登録するためのフック
-    // デフォルト実装は空（Web不要なアプリ用）
-    virtual void setupWeb(AsyncWebServer* server) {}
-
-    // アプリが終了しメニューに戻る際に、登録したWebエンドポイントを解除・破棄するためのフック
-    virtual void teardownWeb(AsyncWebServer* server) {}
-
     // 画面描画処理 (fullDraw=true で背景から全再描画)
     virtual void draw(bool fullDraw = false) = 0;
 
@@ -43,6 +36,6 @@ public:
     // デフォルト実装は空にしておく（受信不要なアプリ用）
     virtual void onIrReceived(const String& hexCode, const String& rawJson, const std::vector<uint16_t>& rawVector, uint32_t ts) {}
 
-    // HAからWebhooks経由で赤外線送信命令(TX)を受け取ったときのコールバック (Legacy, to be removed)
+    // HAからWebhooks経由で赤外線送信命令(TX)を受け取ったときのコールバック
     virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) {}
 };
