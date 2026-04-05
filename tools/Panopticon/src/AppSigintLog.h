@@ -187,14 +187,27 @@ public:
                              irrecv->disableIRIn();
                          }
 
+                         std::vector<uint16_t> calibratedRaw = latestRaw;
+                         for (size_t i = 0; i < calibratedRaw.size(); i++) {
+                             if (i % 2 == 0) {
+                                 calibratedRaw[i] += 30;
+                             } else {
+                                 if (calibratedRaw[i] > 30) {
+                                     calibratedRaw[i] -= 30;
+                                 }
+                             }
+                         }
+
                          // Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission
                          delay(20);
                          
-                         irsend->sendRaw(latestRaw.data(), latestRaw.size(), 38);
-                         DEBUG_PRINTF("SIGINT FIRED: %d pulses\n", latestRaw.size());
+                         // ESP32-S3 clock scaling / RMT divider issues cause 38kHz requested to actually output as ~35kHz.
+                         // We intentionally request 40kHz here to achieve a true 38.0kHz carrier frequency in the physical world.
+                         irsend->sendRaw(calibratedRaw.data(), calibratedRaw.size(), 40);
+                         DEBUG_PRINTF("SIGINT FIRED: %d pulses\n", calibratedRaw.size());
                          
                          // Block the main thread (UI drawing) while RMT interrupts are busy transmitting.
-                         delay(latestRaw.size() + 20);
+                         delay(calibratedRaw.size() + 20);
 
                          // Re-enable RX safely
                          if (irrecv) {
