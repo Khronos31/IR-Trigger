@@ -55,7 +55,7 @@ public:
         }
     }
 
-    void loadSignalRaw(const std::vector<uint16_t>& raw) {
+    virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) override {
         loadedRaw = raw;
         hasLoadedRaw = true;
         needsBackgroundRedraw = true;
@@ -80,8 +80,14 @@ public:
         if (M5.BtnA.wasPressed()) {
             if (hasLoadedRaw && visualFeedbackEndTime == 0) {
                 if (irsend) {
+                    // Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission
+                    delay(20);
+                    
                     irsend->sendRaw(loadedRaw.data(), loadedRaw.size(), 38);
-                    Serial.printf("SNIPER FIRED: %d pulses\n", loadedRaw.size());
+                    DEBUG_PRINTF("SNIPER FIRED: %d pulses\n", loadedRaw.size());
+                    
+                    // Block the main thread (UI drawing) while RMT interrupts are busy transmitting.
+                    delay(loadedRaw.size() + 20);
                 }
                 hasLoadedRaw = false; 
                 

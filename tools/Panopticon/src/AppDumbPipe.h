@@ -33,9 +33,9 @@ public:
         irsend = tx;
     }
 
-    void setPendingTx(const std::vector<uint16_t>& raw, const String& codeStr = "") {
+    virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) override {
         pendingTxRaw = raw;
-        pendingTxCodeStr = codeStr;
+        pendingTxCodeStr = displayCode;
         hasPendingTx = true;
     }
 
@@ -116,8 +116,15 @@ public:
         // TX Processing
         if (hasPendingTx) {
             if (irsend) {
+                // Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission
+                delay(20);
+                
                 irsend->sendRaw(pendingTxRaw.data(), pendingTxRaw.size(), 38);
                 
+                // Block the main thread (UI drawing) while RMT interrupts are busy transmitting the long array.
+                // Assuming roughly 1ms average per pulse (mark+space pair), pendingTxRaw.size() ms is safe.
+                delay(pendingTxRaw.size() + 20);
+
                 if (!pendingTxCodeStr.isEmpty() && !pendingTxCodeStr.startsWith("RAW_")) {
                     int spaceIdx = pendingTxCodeStr.indexOf(' ');
                     if (spaceIdx > 0) {

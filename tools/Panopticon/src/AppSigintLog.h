@@ -49,9 +49,9 @@ public:
         File file = LittleFS.open(currentLogFile, FILE_WRITE);
         if (file) {
             file.close();
-            Serial.println("Created new log file: " + currentLogFile);
+            DEBUG_PRINTLN("Created new log file: " + currentLogFile);
         } else {
-            Serial.println("Failed to create log file: " + currentLogFile);
+            DEBUG_PRINTLN("Failed to create log file: " + currentLogFile);
         }
     }
 
@@ -63,9 +63,9 @@ public:
                     file.print(entry);
                 }
                 file.close();
-                Serial.printf("Flushed %d logs to %s\n", sessionLogsBuffer.size(), currentLogFile.c_str());
+                DEBUG_PRINTF("Flushed %d logs to %s\n", sessionLogsBuffer.size(), currentLogFile.c_str());
             } else {
-                Serial.println("Failed to append to log file: " + currentLogFile);
+                DEBUG_PRINTLN("Failed to append to log file: " + currentLogFile);
             }
             sessionLogsBuffer.clear(); // Clear buffer after flush
         }
@@ -169,7 +169,7 @@ public:
                     // Remove the last received signal from the log buffer
                     if (!sessionLogsBuffer.empty()) {
                         sessionLogsBuffer.pop_back();
-                        Serial.println("Latest signal deleted from buffer.");
+                        DEBUG_PRINTLN("Latest signal deleted from buffer.");
                     }
                 }
                 btnALongPressedHandled = true;
@@ -180,9 +180,15 @@ public:
              if (!btnALongPressedHandled) {
                  if (!latestCode.isEmpty() && latestRaw.size() > 0) {
                      if (irsend) {
+                         // Yield CPU to background tasks (like WiFi) before engaging heavy RMT transmission
+                         delay(20);
+                         
                          irsend->sendRaw(latestRaw.data(), latestRaw.size(), 38);
+                         DEBUG_PRINTF("SIGINT FIRED: %d pulses\n", latestRaw.size());
+                         
+                         // Block the main thread (UI drawing) while RMT interrupts are busy transmitting.
+                         delay(latestRaw.size() + 20);
                      }
-                     Serial.printf("SIGINT FIRED: %s\n", latestCode.c_str());
                      M5.Display.fillCircle(M5.Display.width() - 10, 10, 5, TFT_CYAN);
                      visualFeedbackEndTime = millis() + 50;
                  }

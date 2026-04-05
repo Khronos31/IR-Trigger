@@ -29,4 +29,7 @@ public:
     // 赤外線信号を受信したときのコールバック
     // デフォルト実装は空にしておく（受信不要なアプリ用）
     virtual void onIrReceived(const String& hexCode, const String& rawJson, const std::vector<uint16_t>& rawVector, uint32_t ts) {}
+
+    // HAからWebhooks経由で赤外線送信命令(TX)を受け取ったときのコールバック
+    virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) {}
 };

@@ -4,6 +4,7 @@
 #include "AppDumbPipe.h"
 #include "AppSniper.h"
 #include "AppSigintLog.h"
+#include "AppAPITester.h"
 #include <IRremoteESP8266.h>
 #include <IRrecv.h>
 #include <IRsend.h>
@@ -287,6 +288,10 @@ void setup() {
     delay(200); // Completely stabilize physical pin voltage before allowing interrupts
 
     irrecv = new IRrecv(IR_RX_PIN, 1024, 25, true);
+    
+    // For ESP32, IRsend constructor: IRsend(uint16_t pin, bool inverted = false, bool use_modulation = true)
+    // Unfortunately, we cannot dynamically allocate RMT memory blocks via standard IRremoteESP8266 API easily.
+    // However, we can ensure the task that sends the IR signal is not preempted by placing the array in contiguous memory.
     irsend = new IRsend(IR_TX_PIN);
     
     // Discard raw captures with less than 20 pulses to improve noise resistance
@@ -299,6 +304,7 @@ void setup() {
     apps.push_back(new AppDumbPipe());
     apps.push_back(new AppSniper());
     apps.push_back(new AppSigintLog());
+    apps.push_back(new AppAPITester());
 
     // Initialize all apps with IR hardware
     for (auto app : apps) {
@@ -342,7 +348,14 @@ void setup() {
         std::vector<uint16_t> tempRaw;
         tempRaw.reserve(rawArr.size());
         for (JsonVariant v : rawArr) {
-            tempRaw.push_back(abs(v.as<int>()));
+            uint32_t val = abs(v.as<int>()); // int could be large, uint32_t to safely hold 40000+
+            // ESP32 RMT peripheral uses 15-bit representation (~32767us maximum per item).
+            // A pulse like 40000us (NEC repeat gap) will overflow, causing a completely broken signal transmission.
+            // Clip to 30000us max to preserve the "long gap" nature while avoiding RMT hardware overflow.
+            if (val > 30000) {
+                val = 30000;
+            }
+            tempRaw.push_back(static_cast<uint16_t>(val));
         }
 
         // Handle optional "code" parameter for beautiful UI display (e.g., "SWITCHBOT-12345678")
@@ -359,19 +372,18 @@ void setup() {
             }
         }
 
-                        // Try to find Dumb Pipe and Sniper by name to route TX dynamically
+                        // Route TX to the currently active app via the AppInterface standard method
                         bool handled = false;
-                        for (size_t i = 0; i < apps.size(); i++) {
-                            String appName = apps[i]->getName();
-                            
-                            if (currentAppIndex == i && appName.indexOf("Dumb Pipe") >= 0) {
-                                ((AppDumbPipe*)apps[i])->setPendingTx(tempRaw, displayCode);
-                                request->send(200, "text/plain", "OK: Sent to Dumb Pipe");
+                        if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
+                            String appName = apps[currentAppIndex]->getName();
+
+                            if (appName.indexOf("Dumb Pipe") >= 0 || appName.indexOf("API Tester") >= 0) {
+                                apps[currentAppIndex]->onTxReceived(tempRaw, displayCode);
+                                request->send(200, "text/plain", "OK: TX Sent to App");
                                 handled = true;
-                                break;
                             } 
-                            else if (currentAppIndex == i && appName.indexOf("Sniper") >= 0) {
-                                ((AppSniper*)apps[i])->loadSignalRaw(tempRaw);
+                            else if (appName.indexOf("Sniper") >= 0) {
+                                apps[currentAppIndex]->onTxReceived(tempRaw, displayCode);
                                 
                                 // Safe async webhook post via global queue
                                 JsonDocument docOut;
@@ -386,7 +398,6 @@ void setup() {
 
                                 request->send(200, "text/plain", "OK: Loaded into Sniper");
                                 handled = true;
-                                break;
                             }
                         }
 
@@ -410,9 +421,9 @@ void setup() {
         request->send(200, "text/plain", "Glad you found me!");
     });
 
-    // Endpoint to list saved Sigint logs
+    // Endpoint to list saved logs (Sigint & API Tests)
     server.on("/logs", HTTP_GET, [](AsyncWebServerRequest *request) {
-        String html = "<html><body><h2>Sigint Logs</h2><ul>";
+        String html = "<html><body><h2>Panopticon Logs</h2><ul>";
         File root = LittleFS.open("/");
         File file = root.openNextFile();
         bool hasLogs = false;
@@ -421,7 +432,7 @@ void setup() {
             // Remove any leading slash just in case LittleFS provides one
             if (fileName.startsWith("/")) fileName = fileName.substring(1);
             
-            if (fileName.startsWith("sigint_") && fileName.endsWith(".txt")) {
+            if ((fileName.startsWith("sigint_") || fileName.startsWith("tx_test_")) && fileName.endsWith(".txt")) {
                 hasLogs = true;
                 html += "<li><a href='/download?file=" + fileName + "'>" + fileName + "</a> (" + String(file.size()) + " bytes)</li>";
             }
@@ -472,7 +483,7 @@ void setup() {
         
         while (file) {
             String fileName = String(file.name());
-            if (fileName.startsWith("sigint_") && fileName.endsWith(".txt")) {
+            if ((fileName.startsWith("sigint_") || fileName.startsWith("tx_test_")) && fileName.endsWith(".txt")) {
                 if (!fileName.startsWith("/")) fileName = "/" + fileName;
                 filesToDelete.push_back(fileName);
             }
