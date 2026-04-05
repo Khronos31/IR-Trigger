@@ -202,8 +202,9 @@ public:
                          delay(20);
                          
                          // ESP32-S3 clock scaling / RMT divider issues cause 38kHz requested to actually output as ~35kHz.
-                         // We intentionally request 40kHz here to achieve a true 38.0kHz carrier frequency in the physical world.
-                         irsend->sendRaw(calibratedRaw.data(), calibratedRaw.size(), 40);
+                         // We intentionally request 41kHz here to achieve a ~39kHz carrier frequency in the physical world,
+                         // which passes through 38kHz-40kHz bandpass filters much better than 37kHz.
+                         irsend->sendRaw(calibratedRaw.data(), calibratedRaw.size(), 41);
                          DEBUG_PRINTF("SIGINT FIRED: %d pulses\n", calibratedRaw.size());
                          
                          // Block the main thread (UI drawing) while RMT interrupts are busy transmitting.
