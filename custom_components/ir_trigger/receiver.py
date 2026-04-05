@@ -134,7 +134,7 @@ class NatureRemoRX(RXInterface):
                         return
                     
                     self._last_data = pulses
-                    _LOGGER.debug("Nature Remo %s received new signal: %s", self.receiver_id, pulses)
+                    _LOGGER.debug("RAW payload received from %s: %s", self.receiver_id, pulses)
                     
                     # Convert raw pulses to code
                     code = converter.raw_to_code(pulses)
