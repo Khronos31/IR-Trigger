@@ -11,11 +11,11 @@ TOLERANCE = 0.30 # Increased tolerance for hardware variance
 
 PROTOCOLS = {
     "SWITCHBOT": {
-        "leader_on": 9000,
-        "leader_off": 4500,
-        "bit_on": 680,
-        "bit0_off": 730,
-        "bit1_off": 2150,
+        "leader_on": 9200,
+        "leader_off": 4600,
+        "bit_on": 610,
+        "bit0_off": 830,
+        "bit1_off": 2300,
         "threshold": 1400,
         "bit_length": 26,
     },
@@ -169,7 +169,12 @@ def code_to_raw(code: str) -> list[int]:
         raw.append(config["bit_on"])
         
         # 🛡️ NEC系特有のリピートコード付与
-        if name in ["NEC", "SWITCHBOT"]:
+        if name == "SWITCHBOT":
+            raw.append(41000) # SwitchBot typical gap (~41ms)
+            raw.append(config["leader_on"])
+            raw.append(config["leader_off"] // 2)
+            raw.append(config["bit_on"])
+        elif name == "NEC":
             raw.append(40000) # 40ms Gap
             raw.append(config["leader_on"])
             raw.append(config["leader_off"] // 2)
