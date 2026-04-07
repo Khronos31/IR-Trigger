@@ -286,10 +286,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 if time_diff < 2.0:
                     _LOGGER.info("Smart Debounce: Ignored echo from different receiver %s (dt: %.2fs)", receiver, time_diff)
                     return
-            # 2. Rapid repeat from same receiver (User double-press or chattering)
+            # 2. Rapid repeat from same receiver (Hardware echo or chattering)
             else:
-                if time_diff < 0.3:
-                    _LOGGER.debug("Smart Debounce: Ignored rapid repeat from same receiver %s (dt: %.2fs)", receiver, time_diff)
+                if time_diff < 0.15:
+                    _LOGGER.debug("Smart Debounce: Ignored rapid echo from same receiver %s (dt: %.2fs)", receiver, time_diff)
+                    ir_data.last_event_time = now
                     return
         
         # Update last event state
