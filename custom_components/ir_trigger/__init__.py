@@ -80,9 +80,7 @@ class IRTriggerData:
         self.loaded = False
         
         # Smart Debounce state tracking
-        self.last_event_code = None
-        self.last_event_time = 0.0
-        self.last_event_receiver = None
+        self.recent_events = {} # {code: {"time": timestamp, "receiver": receiver_id}}
 
     async def load_config(self):
         config_path = self.hass.config.path(DICT_FILE_NAME)
@@ -279,24 +277,29 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             
         # Smart Debounce Logic: Filter polling echoes and rapid chattering
         now = time.time()
-        if code == ir_data.last_event_code:
-            time_diff = now - ir_data.last_event_time
+        
+        # Clean up old events from cache to prevent memory leak (keep only last 5 seconds)
+        ir_data.recent_events = {k: v for k, v in ir_data.recent_events.items() if now - v["time"] < 5.0}
+
+        if code in ir_data.recent_events:
+            last_info = ir_data.recent_events[code]
+            time_diff = now - last_info["time"]
+            
             # 1. Echo from different receiver (e.g. Nature Remo cloud polling delay)
-            if receiver != ir_data.last_event_receiver:
+            if receiver != last_info["receiver"]:
                 if time_diff < 2.0:
-                    _LOGGER.info("Smart Debounce: Ignored echo from different receiver %s (dt: %.2fs)", receiver, time_diff)
+                    _LOGGER.info("Smart Debounce: Ignored echo from different receiver %s for %s (dt: %.2fs)", receiver, code, time_diff)
                     return
             # 2. Rapid repeat from same receiver (Hardware echo or chattering)
             else:
                 if time_diff < 0.15:
-                    _LOGGER.debug("Smart Debounce: Ignored rapid echo from same receiver %s (dt: %.2fs)", receiver, time_diff)
-                    ir_data.last_event_time = now
+                    _LOGGER.debug("Smart Debounce: Ignored rapid echo from same receiver %s for %s (dt: %.2fs)", receiver, code, time_diff)
+                    # Extend the shield window as long as hardware chattering continues
+                    ir_data.recent_events[code]["time"] = now
                     return
         
-        # Update last event state
-        ir_data.last_event_code = code
-        ir_data.last_event_time = now
-        ir_data.last_event_receiver = receiver
+        # Update event cache state
+        ir_data.recent_events[code] = {"time": now, "receiver": receiver}
 
         _LOGGER.info("IR Signal Received: Receiver=%s, Code=%s", receiver, code)
 

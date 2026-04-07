@@ -81,7 +81,9 @@ def raw_to_code(raw: list[int]) -> str:
             return f"{name}-{code}"
 
     # Fallback to RAW format
-    csv_pulses = ",".join(map(str, raw))
+    # Round to nearest 50us to absorb physical jitter and ensure consistent strings for debouncing
+    rounded_raw = [int(round(p / 50.0) * 50) for p in raw]
+    csv_pulses = ",".join(map(str, rounded_raw))
     return f"RAW-{csv_pulses}"
 
 def code_to_raw(code: str) -> list[int]:
