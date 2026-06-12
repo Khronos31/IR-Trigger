@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from homeassistant.core import HomeAssistant, ServiceCall, Event, callback
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.helpers.typing import ConfigType
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -113,10 +114,8 @@ class IRTriggerData:
                          len(self.transmitters), len(self.receivers), len(self.devices))
             async_dispatcher_send(self.hass, SIGNAL_LOAD_COMPLETE)
             
-        except Exception as e:
-            _LOGGER.error("Error loading %s: %s", config_path, e)
-            import traceback
-            _LOGGER.error(traceback.format_exc())
+        except Exception:
+            _LOGGER.exception("Error loading %s", config_path)
 
     async def _setup_transmitters(self, config):
         self.transmitters = {}
@@ -266,6 +265,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def handle_reload(call: ServiceCall):
         _LOGGER.info("Reloading IR configuration...")
         await ir_data.load_config()
+        # Reload config entries so entity platforms are torn down and rebuilt.
+        # This makes device additions/removals in IR-Trigger.yaml take effect
+        # without a Home Assistant restart.
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            await hass.config_entries.async_reload(entry.entry_id)
     hass.services.async_register(DOMAIN, SERVICE_RELOAD, handle_reload)
 
     async def handle_ir_event(event: Event):
@@ -276,7 +280,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             return
             
         # Smart Debounce Logic: Filter polling echoes and rapid chattering
-        now = time.time()
+        # monotonic() is immune to system clock adjustments (e.g. NTP sync)
+        now = time.monotonic()
         
         # Clean up old events from cache to prevent memory leak (keep only last 5 seconds)
         ir_data.recent_events = {k: v for k, v in ir_data.recent_events.items() if now - v["time"] < 5.0}
@@ -358,6 +363,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     await tx.async_send(act["code"])
 
     hass.bus.async_listen(EVENT_IR_RECEIVED, handle_ir_event)
+
+    async def handle_hass_stop(event: Event):
+        await ir_data._teardown_receivers()
+    # Receiver lifecycle is owned by load_config (torn down / rebuilt on each load),
+    # so final cleanup happens at HA shutdown rather than at entry unload.
+    # This keeps receivers alive across config entry reloads.
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, handle_hass_stop)
+
     hass.async_create_task(hass.config_entries.flow.async_init(DOMAIN, context={"source": "import"}, data={}))
     return True
 
@@ -368,6 +381,7 @@ async def async_setup_entry(hass, entry):
     return True
 
 async def async_unload_entry(hass, entry):
-    ir_data = hass.data[DOMAIN]
-    await ir_data._teardown_receivers()
+    # Note: receivers are NOT torn down here. Their lifecycle is managed by
+    # load_config / EVENT_HOMEASSISTANT_STOP so that the reload service
+    # (which reloads this entry to rebuild entities) keeps RX running.
     return await hass.config_entries.async_unload_platforms(entry, ["sensor", "button", "light", "switch", "media_player"])
