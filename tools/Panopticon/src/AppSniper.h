@@ -62,8 +62,6 @@ public:
         }
     }
 
-    virtual bool acceptsTx() const override { return true; }
-
     virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) override {
         loadedRaw = raw;
         hasLoadedRaw = true;

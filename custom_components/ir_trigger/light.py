@@ -54,26 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     if ir_data.loaded:
         await async_setup_lights()
     else:
-        # One-shot: run once on first successful load, then disconnect.
-        # Also disconnected on entry unload to avoid duplicate adds across reloads.
-        unsub = None
-
-        async def _async_setup_once():
-            nonlocal unsub
-            if unsub:
-                unsub()
-                unsub = None
-            await async_setup_lights()
-
-        unsub = async_dispatcher_connect(hass, SIGNAL_LOAD_COMPLETE, _async_setup_once)
-
-        def _cleanup():
-            nonlocal unsub
-            if unsub:
-                unsub()
-                unsub = None
-
-        entry.async_on_unload(_cleanup)
+        async_dispatcher_connect(hass, SIGNAL_LOAD_COMPLETE, async_setup_lights)
 
 class IRTriggerLight(IRTriggerEntity, LightEntity):
     """Representation of an IR Trigger Light."""

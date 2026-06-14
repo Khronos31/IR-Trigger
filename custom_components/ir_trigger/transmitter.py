@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import base64
-from . import converter
 from .const import (
     TX_TYPE_ESPHOME,
     TX_TYPE_WEBHOOK,
@@ -31,6 +30,7 @@ class ESPHomeTX(TXInterface):
         self.node_name = node_name
 
     async def async_send(self, code: str):
+        from . import converter
         raw = converter.code_to_raw(code)
         if not raw:
             _LOGGER.error("Failed to convert code to RAW for ESPHome: %s", code)
@@ -62,6 +62,7 @@ class WebhookTX(TXInterface):
         self.url = url
         
     async def async_send(self, code: str):
+        from . import converter
         raw = converter.code_to_raw(code)
         if not raw:
             _LOGGER.error("Failed to convert code to RAW: %s", code)
@@ -85,6 +86,7 @@ class NatureRemoTX(TXInterface):
         self.url = f"http://{ip}/messages"
 
     async def async_send(self, code: str):
+        from . import converter
         raw = converter.code_to_raw(code)
         if not raw:
             _LOGGER.error("Failed to convert code to RAW for Nature Remo: %s", code)
@@ -115,6 +117,7 @@ class BroadlinkTX(TXInterface):
             b64_str = code[4:]
             b64_code_prefixed = f"b64:{b64_str}"
         else:
+            from . import converter
             raw = converter.code_to_raw(code)
             if not raw:
                 _LOGGER.error("Failed to convert code to RAW for Broadlink: %s", code)

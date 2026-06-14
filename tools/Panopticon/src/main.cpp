@@ -254,7 +254,7 @@ void drawMenu(bool fullDraw = false) {
     M5.Display.setCursor(0, 45); // Y offset to avoid overdrawing header
     M5.Display.setTextSize(2);
     for (size_t i = 0; i < apps.size(); i++) {
-        if ((int)i == menuCursor) {
+        if (i == menuCursor) {
             M5.Display.setTextColor(TFT_BLACK, TFT_GREEN);
             M5.Display.print("> ");
         } else {
@@ -287,6 +287,9 @@ void drawMenu(bool fullDraw = false) {
 #include <ArduinoJson.h>
 #include <IRutils.h>
 #include <LittleFS.h>
+
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
 AsyncWebServer server(8080);
 
@@ -354,7 +357,7 @@ void setup() {
     }
 
     WiFi.setHostname("Panopticon");
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.begin(ssid, password);
     unsigned long lastPrintTime = 0;
     while (WiFi.status() != WL_CONNECTED) {
         M5.update();
@@ -435,12 +438,18 @@ void setup() {
         }
 
         // Route the clean, sanitized TX signal to the currently active app
-        // (explicit acceptsTx() routing instead of fragile app-name matching)
-        if (currentAppIndex >= 0 && currentAppIndex < (int)apps.size() &&
-            apps[currentAppIndex]->acceptsTx()) {
-            apps[currentAppIndex]->onTxReceived(tempRaw, displayCode);
-            request->send(200, "text/plain", "OK: TX Sent to App (" + String(apps[currentAppIndex]->getName()) + ")");
-            return;
+        if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
+            String appName = apps[currentAppIndex]->getName();
+            
+            // Allow only apps that are designed to receive TX payloads
+            if (appName.indexOf("Dumb Pipe") >= 0 || 
+                appName.indexOf("API Tester") >= 0 || 
+                appName.indexOf("Sniper") >= 0) {
+                
+                apps[currentAppIndex]->onTxReceived(tempRaw, displayCode);
+                request->send(200, "text/plain", "OK: TX Sent to App (" + appName + ")");
+                return;
+            }
         }
 
         request->send(400, "text/plain", "App not ready to receive TX");
@@ -495,9 +504,18 @@ void setup() {
                 fileName = "/" + fileName;
             }
             if (LittleFS.exists(fileName)) {
-                // Stream directly from LittleFS (no full read into RAM).
-                // The 'download=true' flag sets Content-Disposition: attachment automatically.
-                request->send(LittleFS, fileName, "text/plain", true);
+                // Read into memory and force download as attachment
+                File file = LittleFS.open(fileName, "r");
+                if (file) {
+                    String content = file.readString();
+                    file.close();
+                    
+                    AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", content);
+                    response->addHeader("Content-Disposition", "attachment; filename=\"" + fileName.substring(1) + "\"");
+                    request->send(response);
+                } else {
+                    request->send(500, "text/plain", "Failed to open file: " + fileName);
+                }
             } else {
                 request->send(404, "text/plain", "File not found: " + fileName);
             }
@@ -563,7 +581,7 @@ void loop() {
         if (M5.BtnB.pressedFor(500)) {
             if (!btnBLongPressedHandled) {
                 menuCursor--;
-                if (menuCursor < 0) menuCursor = (int)apps.size() - 1;
+                if (menuCursor < 0) menuCursor = apps.size() - 1;
                 drawMenu(); // only updates text with bg color
                 btnBLongPressedHandled = true;
             }
@@ -571,7 +589,7 @@ void loop() {
         // Handle Short Press (Forward Scroll)
         else if (M5.BtnB.wasReleased() && !btnBLongPressedHandled) {
             menuCursor++;
-            if (menuCursor >= (int)apps.size()) menuCursor = 0;
+            if (menuCursor >= apps.size()) menuCursor = 0;
             drawMenu();
         }
 
@@ -582,7 +600,7 @@ void loop() {
         
         // Enter App
         if (M5.BtnA.wasPressed()) {
-            if (apps.size() > 0 && menuCursor >= 0 && menuCursor < (int)apps.size()) {
+            if (apps.size() > 0 && menuCursor >= 0 && menuCursor < apps.size()) {
                 currentAppIndex = menuCursor;
                 apps[currentAppIndex]->setup();
                 apps[currentAppIndex]->draw(true);
@@ -591,7 +609,7 @@ void loop() {
     } else { // An app is currently active
         bool returnToMenu = false;
         
-        if (currentAppIndex >= 0 && currentAppIndex < (int)apps.size()) {
+        if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
             apps[currentAppIndex]->loop(returnToMenu);
         } else {
             returnToMenu = true; // Failsafe
@@ -607,16 +625,12 @@ void loop() {
 
     // --- Centralized IR Receive & Push ---
     if (irrecv && irrecv->decode(&results)) {
-        // Skip all decoding/JSON building while in the menu: signals are only
-        // dispatched to the active app, so there is no consumer to build for.
-        bool appActive = (currentAppIndex >= 0 && currentAppIndex < (int)apps.size());
-
         // Physical Noise Filter (Squelch)
         // Valid IR signals start with a long leader code (usually >3000us).
         // Discard anything starting with less than 1000us to prevent fake triggers from physical tapping/vibration.
         uint16_t firstPulseUs = (results.rawlen > 1) ? results.rawbuf[1] * kRawTick : 0;
-
-        if (appActive && results.rawlen >= 10 && results.rawlen <= 1024 && firstPulseUs > 1000) {
+        
+        if (results.rawlen >= 10 && results.rawlen <= 1024 && firstPulseUs > 1000) { 
             String rawJson;
             rawJson.reserve(results.rawlen * 6 + 10);
             rawJson = "[";
@@ -646,8 +660,9 @@ void loop() {
             }
 
             // Dispatch dynamic onIrReceived to the currently active app plugin
-            // (appActive already verified above)
-            apps[currentAppIndex]->onIrReceived(hexCode, rawJson, rawVector, millis());
+            if (currentAppIndex >= 0 && currentAppIndex < apps.size()) {
+                apps[currentAppIndex]->onIrReceived(hexCode, rawJson, rawVector, millis());
+            }
         }
         irrecv->resume();
     }

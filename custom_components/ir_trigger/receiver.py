@@ -1,11 +1,15 @@
 import logging
 import asyncio
+import threading
+import time
+import math
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Callable, Optional
 from datetime import timedelta
 from aiohttp import web
+# ... (rest of imports)
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.components.webhook import async_register as webhook_register, async_unregister as webhook_unregister
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -20,6 +24,7 @@ from .const import (
     RX_TYPE_WEBHOOK,
     RX_TYPE_NATURE_REMO,
     CONF_TYPE,
+    CONF_INDEX,
     CONF_POLL_INTERVAL,
 )
 
@@ -92,7 +97,6 @@ class NatureRemoRX(RXInterface):
         self.interval = interval
         self._stop_polling = None
         self._last_data = None
-        self._polling = False  # Re-entrancy guard (poll may take up to 2s vs 1s interval)
 
     async def async_setup(self):
         async def poll(now):
@@ -108,14 +112,10 @@ class NatureRemoRX(RXInterface):
             self._stop_polling()
 
     async def _poll_now(self):
-        if self._polling:
-            return  # Previous poll still in flight; skip this tick
-        self._polling = True
-
         url = f"http://{self.ip}/messages"
         headers = {"X-Requested-With": "local"}
         session = async_get_clientsession(self.hass)
-
+        
         try:
             async with asyncio.timeout(2):
                 async with session.get(url, headers=headers) as resp:
@@ -145,8 +145,6 @@ class NatureRemoRX(RXInterface):
             _LOGGER.debug("Nature Remo %s poll timeout", self.receiver_id)
         except Exception as e:
             _LOGGER.error("Error polling Nature Remo %s: %s", self.receiver_id, e)
-        finally:
-            self._polling = False
 
 def create_receiver(hass: HomeAssistant, receiver_id: str, config: dict) -> Optional[RXInterface]:
     rx_type = config.get(CONF_TYPE)

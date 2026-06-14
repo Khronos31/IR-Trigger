@@ -82,8 +82,6 @@ public:
         M5.Display.println("Waiting for HA... ");
     }
 
-    virtual bool acceptsTx() const override { return true; }
-
     virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) override {
         txCount++;
         

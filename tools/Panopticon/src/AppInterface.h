@@ -38,10 +38,6 @@ public:
 
     // HAからWebhooks経由で赤外線送信命令(TX)を受け取ったときのコールバック
     virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) {}
-
-    // このアプリが /tx 経由のTXペイロードを受け付けるか
-    // (アプリ名の文字列マッチに依存しない明示的なルーティング判定)
-    virtual bool acceptsTx() const { return false; }
 };
 
 // =========================================================================================

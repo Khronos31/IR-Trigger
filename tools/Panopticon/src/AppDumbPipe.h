@@ -35,8 +35,6 @@ public:
         irrecv = rx;
     }
 
-    virtual bool acceptsTx() const override { return true; }
-
     virtual void onTxReceived(const std::vector<uint16_t>& raw, const String& displayCode) override {
         pendingTxRaw = raw;
         pendingTxCodeStr = displayCode;
