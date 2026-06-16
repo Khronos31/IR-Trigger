@@ -65,7 +65,14 @@ PROTOCOLS = {
         "bit0_off": 400,
         "bit1_off": 1300,
         "threshold": 700,
-    }
+    },
+    "CHOFU": {
+        "preamble": [3050, 3050, 3050, 4400],
+        "bit_on": 550,
+        "bit0_off": 550,
+        "bit1_off": 1650,
+        "threshold": 1100,
+    },
 }
 
 def raw_to_code(raw: list[int]) -> str:
@@ -103,21 +110,6 @@ def _code_to_raw_cached(code: str) -> tuple[int, ...]:
 
 def _code_to_raw_impl(code: str) -> list[int]:
     """Actual conversion logic for code_to_raw."""
-    if code.startswith("CHOFU-"):
-        try:
-            payload = bytes.fromhex(code[6:])
-        except ValueError:
-            return []
-        # Custom 4-pulse preamble, LSB-first data, 550us bit marks
-        raw = [3050, 3050, 3050, 4400]
-        for byte_val in payload:
-            for j in range(8):
-                bit = (byte_val >> j) & 1
-                raw.append(550)
-                raw.append(1650 if bit else 550)
-        raw.append(550)  # stop bit
-        return raw
-
     if code.startswith("B64-"):
         try:
             b64_str = code[4:]
@@ -216,7 +208,10 @@ def _code_to_raw_impl(code: str) -> list[int]:
         return []
 
     # Construct RAW array
-    raw = [config["leader_on"], config["leader_off"]]
+    if "preamble" in config:
+        raw = list(config["preamble"])
+    else:
+        raw = [config["leader_on"], config["leader_off"]]
     
     if name == "SONY":
         for bit in bits:
@@ -249,16 +244,24 @@ def _is_match(actual: int, target: int) -> bool:
     return target * (1 - TOLERANCE) <= actual <= target * (1 + TOLERANCE)
 
 def _decode_mark_space(raw: list[int], config: dict, protocol_name: str) -> str | None:
-    """Generic decoder for Mark/Space protocols (NEC, AEHA, DAIKIN)."""
-    if len(raw) < 10: return None # Very short signal
-    
-    # Leader check
-    if not _is_match(raw[0], config["leader_on"]) or not _is_match(raw[1], config["leader_off"]):
-        return None
+    """Generic decoder for Mark/Space protocols (NEC, AEHA, DAIKIN, CHOFU, etc.)."""
+    if len(raw) < 10: return None
+
+    if "preamble" in config:
+        preamble = config["preamble"]
+        if len(raw) < len(preamble) + 2:
+            return None
+        for i, target in enumerate(preamble):
+            if not _is_match(raw[i], target):
+                return None
+        data_start = len(preamble)
+    else:
+        if not _is_match(raw[0], config["leader_on"]) or not _is_match(raw[1], config["leader_off"]):
+            return None
+        data_start = 2
 
     bits = []
-    # Data starts from index 2
-    for i in range(2, len(raw) - 1, 2):
+    for i in range(data_start, len(raw) - 1, 2):
         on_p = raw[i]
         off_p = raw[i+1]
         
