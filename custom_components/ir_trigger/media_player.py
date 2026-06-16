@@ -60,7 +60,40 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     if ir_data.loaded:
         await async_setup_media_players()
     else:
-        async_dispatcher_connect(hass, SIGNAL_LOAD_COMPLETE, async_setup_media_players)
+        # One-shot: run once on first successful load, then disconnect.
+        # Also disconnected on entry unload to avoid duplicate adds across reloads.
+        unsub = None
+
+        async def _async_setup_once():
+            nonlocal unsub
+            if unsub:
+                unsub()
+                unsub = None
+            await async_setup_media_players()
+
+        unsub = async_dispatcher_connect(hass, SIGNAL_LOAD_COMPLETE, _async_setup_once)
+
+        def _cleanup():
+            nonlocal unsub
+            if unsub:
+                unsub()
+                unsub = None
+
+        entry.async_on_unload(_cleanup)
+
+# Mapping key -> MediaPlayerEntityFeature flag
+_FEATURE_FOR_KEY = {
+    "turn_on": MediaPlayerEntityFeature.TURN_ON,
+    "turn_off": MediaPlayerEntityFeature.TURN_OFF,
+    "volume_up": MediaPlayerEntityFeature.VOLUME_STEP,
+    "volume_down": MediaPlayerEntityFeature.VOLUME_STEP,
+    "volume_mute": MediaPlayerEntityFeature.VOLUME_MUTE,
+    "play": MediaPlayerEntityFeature.PLAY,
+    "pause": MediaPlayerEntityFeature.PAUSE,
+    "stop": MediaPlayerEntityFeature.STOP,
+    "next_track": MediaPlayerEntityFeature.NEXT_TRACK,
+    "previous_track": MediaPlayerEntityFeature.PREVIOUS_TRACK,
+}
 
 class IRTriggerMediaPlayer(IRTriggerEntity, MediaPlayerEntity):
     """Representation of an IR Trigger Media Player."""
@@ -76,25 +109,9 @@ class IRTriggerMediaPlayer(IRTriggerEntity, MediaPlayerEntity):
         
         # Supported features based on mapping
         self._attr_supported_features = MediaPlayerEntityFeature(0)
-        mapping = self._mapping
-        if "turn_on" in mapping:
-            self._attr_supported_features |= MediaPlayerEntityFeature.TURN_ON
-        if "turn_off" in mapping:
-            self._attr_supported_features |= MediaPlayerEntityFeature.TURN_OFF
-        if "volume_up" in mapping or "volume_down" in mapping:
-            self._attr_supported_features |= MediaPlayerEntityFeature.VOLUME_STEP
-        if "volume_mute" in mapping:
-            self._attr_supported_features |= MediaPlayerEntityFeature.VOLUME_MUTE
-        if "play" in mapping:
-            self._attr_supported_features |= MediaPlayerEntityFeature.PLAY
-        if "pause" in mapping:
-            self._attr_supported_features |= MediaPlayerEntityFeature.PAUSE
-        if "stop" in mapping:
-            self._attr_supported_features |= MediaPlayerEntityFeature.STOP
-        if "next_track" in mapping:
-            self._attr_supported_features |= MediaPlayerEntityFeature.NEXT_TRACK
-        if "previous_track" in mapping:
-            self._attr_supported_features |= MediaPlayerEntityFeature.PREVIOUS_TRACK
+        for key, feature in _FEATURE_FOR_KEY.items():
+            if key in self._mapping:
+                self._attr_supported_features |= feature
 
     @property
     def state(self) -> MediaPlayerState:

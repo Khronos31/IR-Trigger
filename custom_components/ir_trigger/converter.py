@@ -1,8 +1,11 @@
 import logging
-import math
 import base64
+from functools import lru_cache
 
 _LOGGER = logging.getLogger(__name__)
+
+# Lookup table for reversing the bits of a single byte (used by NEC encoding/decoding)
+_REV8 = bytes(int(f"{i:08b}"[::-1], 2) for i in range(256))
 
 # IR Protocol Constants (all values in microseconds)
 # Based on AD00020P firmware (main.c) logic where time units are 0.1ms (100us)
@@ -87,7 +90,34 @@ def raw_to_code(raw: list[int]) -> str:
     return f"RAW-{csv_pulses}"
 
 def code_to_raw(code: str) -> list[int]:
-    """Convert code string back to RAW pulse array."""
+    """Convert code string back to RAW pulse array.
+
+    Conversion results are cached (codes are static dictionary entries).
+    A fresh list is returned so callers may safely mutate it.
+    """
+    return list(_code_to_raw_cached(code))
+
+@lru_cache(maxsize=256)
+def _code_to_raw_cached(code: str) -> tuple[int, ...]:
+    return tuple(_code_to_raw_impl(code))
+
+def _code_to_raw_impl(code: str) -> list[int]:
+    """Actual conversion logic for code_to_raw."""
+    if code.startswith("CHOFU-"):
+        try:
+            payload = bytes.fromhex(code[6:])
+        except ValueError:
+            return []
+        # Custom 4-pulse preamble, LSB-first data, 550us bit marks
+        raw = [3050, 3050, 3050, 4400]
+        for byte_val in payload:
+            for j in range(8):
+                bit = (byte_val >> j) & 1
+                raw.append(550)
+                raw.append(1650 if bit else 550)
+        raw.append(550)  # stop bit
+        return raw
+
     if code.startswith("B64-"):
         try:
             b64_str = code[4:]
@@ -163,7 +193,7 @@ def code_to_raw(code: str) -> list[int]:
                 # Extract byte starting from the highest order to match the hex representation
                 byte_val = (val >> (bit_length - 8 - i)) & 0xFF
                 # Reverse the bits in this byte since IRremoteESP8266 reverses them when building the hex
-                rev_byte_val = int(f"{byte_val:08b}"[::-1], 2)
+                rev_byte_val = _REV8[byte_val]
                 for j in range(8):
                     bits.append((rev_byte_val >> j) & 1)
         elif name == "SONY":
@@ -301,7 +331,7 @@ def _bits_to_hex(bits: list[int], protocol: str) -> str:
                 if b:
                     byte_val |= (1 << j)
             # Bit reverse the byte_val
-            rev_byte_val = int(f"{byte_val:08b}"[::-1], 2)
+            rev_byte_val = _REV8[byte_val]
             val |= (rev_byte_val << (len(bits) - 8 - i))
         digits = max(2, (len(bits) + 3) // 4)
         return f"{val:0{digits}X}"
