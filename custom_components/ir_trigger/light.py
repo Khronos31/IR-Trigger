@@ -1,6 +1,9 @@
 import logging
+import voluptuous as vol
 from homeassistant.components.light import LightEntity, ColorMode
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
@@ -11,6 +14,8 @@ from .const import (
     CONF_BUTTONS,
     CONF_DOMAIN,
     CONF_MAPPING,
+    SERVICE_SET_STATE,
+    ATTR_IS_ON,
 )
 from .entity import IRTriggerEntity
 
@@ -19,7 +24,14 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
     """Set up the IR-Trigger light platform from a config entry."""
     ir_data = hass.data[DOMAIN]
-    
+
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SET_STATE,
+        {vol.Required(ATTR_IS_ON): cv.boolean},
+        "async_sync_state",
+    )
+
     async def async_setup_lights():
         """Create lights for mapped devices."""
         entities = []
@@ -103,3 +115,12 @@ class IRTriggerLight(IRTriggerEntity, LightEntity):
         if await self._async_send_mapped_button("turn_off"):
             self._is_on = False
             self.async_write_ha_state()
+
+    async def async_sync_state(self, is_on: bool) -> None:
+        """Update the reported state to match an externally observed IR signal.
+
+        Does not transmit — for reflecting state learned from a receiver
+        (e.g. the physical remote was used) without re-sending IR.
+        """
+        self._is_on = is_on
+        self.async_write_ha_state()

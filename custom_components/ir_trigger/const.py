@@ -1,6 +1,8 @@
 DOMAIN = "ir_trigger"
 EVENT_IR_RECEIVED = "ir_trigger_received"
 SERVICE_RELOAD = "reload"
+SERVICE_SET_STATE = "set_state"
+ATTR_IS_ON = "is_on"
 
 DICT_FILE_NAME = "IR-Trigger.yaml"
 

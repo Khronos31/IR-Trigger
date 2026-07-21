@@ -1,3 +1,18 @@
 reload:
   name: Reload IR-Trigger Dictionary
   description: Reloads the IR-Trigger.yaml dictionary from the config directory without restarting Home Assistant.
+
+set_state:
+  name: Sync State
+  description: Updates an IR-Trigger entity's reported state to match a signal observed by a receiver, without transmitting IR. For syncing HA's state after the physical remote was used.
+  target:
+    entity:
+      integration: ir_trigger
+      domain: light
+  fields:
+    is_on:
+      name: Is On
+      description: The observed state to report.
+      required: true
+      selector:
+        boolean:
