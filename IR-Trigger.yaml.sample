@@ -45,6 +45,12 @@ devices:
     transmitter: "tx_living"
     template: "light/IR-A04HS"
 
+  Climate_Bedroom:
+    name: "Bedroom Air Conditioner"
+    transmitter: "tx_study"
+    receiver: "rx_study_webhook"
+    template: "climate/RAR-7A3"
+
 global:
   repeat:
     - TV_Study

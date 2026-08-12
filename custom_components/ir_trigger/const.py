@@ -59,4 +59,5 @@ ATTR_VIA_DEVICE = "via_device"
 
 SIGNAL_NEW_RECEIVER = f"{DOMAIN}_new_receiver"
 SIGNAL_UPDATE_SENSOR = f"{DOMAIN}_update_sensor"
+SIGNAL_IR_CODE_RECEIVED = f"{DOMAIN}_ir_code_received"
 SIGNAL_LOAD_COMPLETE = f"{DOMAIN}_load_complete"

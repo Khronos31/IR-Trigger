@@ -20,6 +20,9 @@ Home Assistant向けの軽量・高レスポンスな赤外線(IR)双方向統�
    - インターネット上の巨大な **Broadlink Base64 (`B64-`) コード資産** をそのまま流用可能なネイティブサポート。
 5. **ハブ＆スポーク構造 (via_device)**
    - 送信機（ハブ）と家電デバイス（スポーク）をHAのデバイスレジストリ上で紐付け。
+6. **動的エアコンプロトコル**
+   - Pythonテンプレートから全状態フレームを生成し、対応リモコンの受信信号でClimate状態を同期。
+   - Hitachi RAR-7A3（RAS-V22E/V25E/V28E/V36E/V40E2）を内蔵。
 
 ---
 
@@ -60,6 +63,12 @@ devices:
     name: "スタディのテレビ"
     transmitter: tx_study
     template: "media_player/J-MX100RC" # ディレクトリを含めた明示的な指定
+
+  Climate_Bedroom:
+    name: "ベッドルームのエアコン"
+    transmitter: tx_study
+    receiver: rx_study_webhook # 同型機が複数ある場合の誤同期を防止
+    template: "climate/RAR-7A3"
 
 # 4. グローバル設定
 global:
@@ -105,3 +114,24 @@ python3 tools/scripts/broadlink_json_to_yaml.py input.json output.yaml --domain 
 ## 🛠️ 4. トラブルシューティング
 
 現在、特に報告されている制限事項はありません。
+
+---
+
+## 🌡️ 5. Hitachi RAR-7A3
+
+`template: "climate/RAR-7A3"` は、冷房・暖房・除湿・これっきり自動、6段階の風量、eco／セーブの組み合わせをClimateエンティティから送信します。上下・左右スイング、フィルター掃除、標準Climateに対応するモードがない「涼快」は同じデバイス配下のボタンになります。
+
+RAR-7A3の受信フレームからClimate状態も同期します。複数室に同型機がある場合は、各デバイスへ `receiver`（文字列またはリスト）を指定し、別室の信号による誤同期を防いでください。スイングはリモコン自体がトグル信号しか送らないため、現在状態は追跡できません。
+
+---
+
+## 🚢 6. リリース
+
+`VERSION` を正として、次のコマンドで `manifest.json` を同時更新します。
+
+```bash
+python tools/scripts/release_version.py set 1.1.0
+python tools/scripts/release_version.py check
+```
+
+`main` のCI（単体テスト、HACS、hassfest）が成功してから同じ版の `v1.1.0` タグをpushします。タグ用CIはバージョン一致を再検証し、HACS用 `ir_trigger.zip` とGitHub Releaseを自動作成します。公開済みタグは移動せず、修正は新しい版としてリリースします。

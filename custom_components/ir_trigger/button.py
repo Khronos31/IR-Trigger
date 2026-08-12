@@ -1,15 +1,17 @@
 import logging
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
-    DOMAIN,
     ATTR_VIA_DEVICE,
-    SIGNAL_LOAD_COMPLETE,
+    CONF_BUTTONS,
+    CONF_DOMAIN,
     CONF_NAME,
     CONF_TRANSMITTER,
-    CONF_BUTTONS,
+    DOMAIN,
+    SIGNAL_LOAD_COMPLETE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,6 +46,20 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                         tx_id
                     )
                 )
+
+            if device_info.get(CONF_DOMAIN) == "climate":
+                for button_name, action in device_info.get("climate_buttons", {}).items():
+                    entities.append(
+                        IRTriggerClimateCommandButton(
+                            hass,
+                            device_id,
+                            device_info.get(CONF_NAME, device_id),
+                            button_name,
+                            action,
+                            ir_data,
+                            tx_id,
+                        )
+                    )
         
         async_add_entities(entities)
 
@@ -97,6 +113,38 @@ class IRTriggerButton(ButtonEntity):
     @property
     def device_info(self):
         """Return device information."""
+        return {
+            "identifiers": {(DOMAIN, self._device_id)},
+            "name": self._device_name,
+            "manufacturer": "IR-Trigger",
+            "model": "Target Device",
+            ATTR_VIA_DEVICE: (DOMAIN, f"tx_{self._transmitter_id}"),
+        }
+
+
+class IRTriggerClimateCommandButton(ButtonEntity):
+    """A button whose frame is generated from the climate's current state."""
+
+    def __init__(self, hass, device_id, device_name, button_name, action, ir_data, transmitter_id):
+        self.hass = hass
+        self._device_id = device_id
+        self._device_name = device_name
+        self._button_name = button_name
+        self._action = action
+        self._ir_data = ir_data
+        self._transmitter_id = transmitter_id
+        self._attr_name = f"{device_name} {button_name}"
+        self._attr_unique_id = f"ir_trigger_climate_btn_{device_id}_{action}"
+
+    async def async_press(self) -> None:
+        climate = self._ir_data.climate_entities.get(self._device_id)
+        if climate is None:
+            _LOGGER.warning("Climate entity %s is not available", self._device_id)
+            return
+        await climate.async_send_protocol_command(self._action)
+
+    @property
+    def device_info(self):
         return {
             "identifiers": {(DOMAIN, self._device_id)},
             "name": self._device_name,

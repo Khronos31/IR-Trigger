@@ -1,58 +1,51 @@
 import logging
 import os
-import asyncio
 import time
 from pathlib import Path
 
-from homeassistant.core import HomeAssistant, ServiceCall, Event, callback
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP
-from homeassistant.helpers.typing import ConfigType
 import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.util.yaml import load_yaml
 
 from .const import (
+    ATTR_BUTTON,
+    ATTR_CODE,
+    ATTR_DEVICE,
+    ATTR_RECEIVER,
+    CONF_BIND,
+    CONF_BUTTONS,
+    CONF_DATA,
+    CONF_DEVICES,
+    CONF_GLOBAL,
+    CONF_LOCAL_RECEIVERS,
+    CONF_MODE_ENTITY,
+    CONF_MODES,
+    CONF_NAME,
+    CONF_RECEIVERS,
+    CONF_REMAP,
+    CONF_REPEAT,
+    CONF_SERVICE,
+    CONF_SOURCE,
+    CONF_STATE_MACHINES,
+    CONF_TARGET,
+    CONF_TEMPLATE,
+    CONF_TRANSMITTER,
+    CONF_TRANSMITTERS,
+    CONF_TYPE,
+    DICT_FILE_NAME,
     DOMAIN,
     EVENT_IR_RECEIVED,
     SERVICE_RELOAD,
-    DICT_FILE_NAME,
-    CONF_RECEIVER,
-    CONF_CODE,
-    CONF_MODE_ENTITY,
-    CONF_TRANSMITTERS,
-    CONF_RECEIVERS,
-    CONF_DEVICES,
-    CONF_MODES,
-    CONF_GLOBAL,
-    CONF_STATE_MACHINES,
-    CONF_TYPE,
-    CONF_INDEX,
-    CONF_ENTITY_ID,
-    CONF_TRANSMITTER,
-    CONF_BUTTONS,
-    CONF_BIND,
-    CONF_REMAP,
-    CONF_SOURCE,
-    CONF_TARGET,
-    CONF_SERVICE,
-    CONF_DATA,
-    CONF_NAME,
-    CONF_LOCAL_RECEIVERS,
-    CONF_REPEAT,
-    CONF_DOMAIN,
-    CONF_MAPPING,
-    CONF_TEMPLATE,
-    ATTR_RECEIVER,
-    ATTR_DEVICE,
-    ATTR_BUTTON,
-    ATTR_CODE,
-    SIGNAL_NEW_RECEIVER,
-    SIGNAL_UPDATE_SENSOR,
+    SIGNAL_IR_CODE_RECEIVED,
     SIGNAL_LOAD_COMPLETE,
+    SIGNAL_UPDATE_SENSOR,
 )
-from .transmitter import create_transmitter
 from .receiver import create_receiver
+from .transmitter import create_transmitter
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +68,7 @@ class IRTriggerData:
         self.transmitters = {}
         self.receivers = {}
         self.devices = {}
+        self.climate_entities = {}
         self.global_repeat = []
         self.global_remap = {}
         self.state_machines = []
@@ -164,7 +158,7 @@ class IRTriggerData:
                             final_device_info = IRTriggerData._load_py_template(template_file)
                         else:
                             final_device_info = load_yaml(str(template_file))
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001 - templates are untrusted extension code
                         _LOGGER.error("Error loading template %s: %s", template_file, e)
                 else:
                     _LOGGER.warning("Template %s not found in user or official remotes", template_name)
@@ -341,6 +335,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         async_dispatcher_send(hass, SIGNAL_UPDATE_SENSOR, receiver, {
             ATTR_CODE: code, ATTR_DEVICE: info[ATTR_DEVICE], ATTR_BUTTON: info[ATTR_BUTTON]
         })
+        # Dynamic protocols (notably full-state climate remotes) cannot be
+        # represented by a finite reverse dictionary. Give interested
+        # entities the normalized code so their template decoder can update
+        # HA state without retransmitting IR.
+        async_dispatcher_send(hass, SIGNAL_IR_CODE_RECEIVED, receiver, code)
 
         # 1. Global Repeat
         if device_id and device_id in ir_data.global_repeat:

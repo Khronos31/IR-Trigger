@@ -22,6 +22,9 @@ IR-Trigger goes beyond simply receiving IR signals to trigger automations. It em
    - **Native Broadlink Base64 (`B64-`) support**: Copy and paste the massive trove of Broadlink Base64 codes from the internet straight into your dictionaries!
 5. **Hub & Spoke Architecture (via_device)**
    - Elegantly links transmitters (Hubs) and appliance devices (Spokes) natively within the Home Assistant Device Registry.
+6. **Dynamic climate protocols**
+   - Generates full-state frames from Python templates and synchronizes Climate state from supported physical remotes.
+   - Includes Hitachi RAR-7A3 support for RAS-V22E/V25E/V28E/V36E/V40E2.
 
 ---
 
@@ -64,6 +67,12 @@ devices:
     name: "Study TV"
     transmitter: tx_study
     template: "media_player/J-MX100RC" # Explicit category path
+
+  Climate_Bedroom:
+    name: "Bedroom Air Conditioner"
+    transmitter: tx_study
+    receiver: rx_study_webhook # Prevents cross-room sync with identical units
+    template: "climate/RAR-7A3"
 
 # 4. Global Configuration
 global:
@@ -109,3 +118,24 @@ python3 tools/scripts/broadlink_json_to_yaml.py input.json output.yaml --domain 
 ## 🛠️ 4. Troubleshooting
 
 No known limitations at this time. Enjoy the Local Push freedom!
+
+---
+
+## 🌡️ 5. Hitachi RAR-7A3
+
+`template: "climate/RAR-7A3"` controls cooling, heating, dry and Korekkiri Auto modes, six fan settings, and every eco/save combination. Vertical swing, horizontal swing, filter cleaning, and Ryokai (which has no exact standard HA climate mode) are exposed as companion buttons on the same device.
+
+Received RAR-7A3 frames synchronize the Climate entity. If identical units exist in multiple rooms, set `receiver` (a string or list) per device to prevent a remote in one room from updating another. The physical remote sends swing toggles without state, so swing state cannot be tracked reliably.
+
+---
+
+## 🚢 6. Releases
+
+`VERSION` is canonical. Synchronize every version-bearing file with:
+
+```bash
+python tools/scripts/release_version.py set 1.1.0
+python tools/scripts/release_version.py check
+```
+
+After the `main` CI (unit tests, HACS and hassfest) passes, push the matching `v1.1.0` tag. Tag CI rechecks the version and automatically creates both `ir_trigger.zip` and the GitHub Release. Never move a published tag; publish a corrective version instead.
