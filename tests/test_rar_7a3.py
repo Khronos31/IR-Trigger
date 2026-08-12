@@ -48,6 +48,10 @@ RYOKAI_25_FAN_1 = (
 
 
 class RAR7A3ProtocolTest(unittest.TestCase):
+    def test_template_models_contextual_eco_behavior(self):
+        self.assertEqual(RAR.preset_start_modes["eco"], "auto")
+        self.assertTrue(RAR.clear_eco_on_hvac_mode)
+
     def test_encode_captured_cool_frame(self):
         self.assertEqual(
             RAR.encode("cool", "auto", 25, "normal", "set_hvac_mode"),

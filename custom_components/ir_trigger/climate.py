@@ -80,6 +80,10 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                     temperature_ranges=device_info.get("temperature_ranges") or {},
                     climate_buttons=device_info.get("climate_buttons") or {},
                     climate_button_states=device_info.get("climate_button_states") or {},
+                    preset_start_modes=device_info.get("preset_start_modes") or {},
+                    clear_eco_on_hvac_mode=device_info.get(
+                        "clear_eco_on_hvac_mode", False
+                    ),
                     receivers=device_info.get(CONF_RECEIVER),
                 )
             )
@@ -138,6 +142,8 @@ class IRTriggerClimate(IRTriggerEntity, ClimateEntity):
         temperature_ranges,
         climate_buttons,
         climate_button_states,
+        preset_start_modes,
+        clear_eco_on_hvac_mode,
         receivers,
     ):
         super().__init__(hass, device_id, device_name, transmitter, transmitter_id, buttons, mapping)
@@ -149,6 +155,8 @@ class IRTriggerClimate(IRTriggerEntity, ClimateEntity):
         self._encoder_accepts_protocol_mode = "protocol_mode" in parameters
         self._climate_buttons = climate_buttons
         self._climate_button_states = climate_button_states
+        self._preset_start_modes = preset_start_modes
+        self._clear_eco_on_hvac_mode = clear_eco_on_hvac_mode
         if isinstance(receivers, str):
             receivers = [receivers]
         self._receivers = frozenset(receivers or [])
@@ -228,6 +236,11 @@ class IRTriggerClimate(IRTriggerEntity, ClimateEntity):
         self._hvac_mode = hvac_mode
         if hvac_mode != HVACMode.OFF:
             self._protocol_mode = str(hvac_mode)
+            if self._clear_eco_on_hvac_mode:
+                self._preset_mode = {
+                    "eco": "normal",
+                    "eco_save": "save",
+                }.get(self._preset_mode, self._preset_mode)
             if str(hvac_mode) != previous_mode:
                 self._target_temperature = float(
                     self._default_temperatures.get(str(hvac_mode), self._target_temperature)
@@ -249,10 +262,13 @@ class IRTriggerClimate(IRTriggerEntity, ClimateEntity):
         if temp is None:
             return
         previous = self._target_temperature
+        was_off = self._hvac_mode == HVACMode.OFF
         self._target_temperature = float(temp)
-        if self._hvac_mode == HVACMode.OFF:
+        if was_off:
             self._resume_hvac_mode()
         if self._target_temperature == previous:
+            if was_off:
+                await self._async_send_state("turn_on")
             return
         action = "temperature_up" if self._target_temperature > previous else "temperature_down"
         await self._async_send_state(action)
@@ -272,6 +288,14 @@ class IRTriggerClimate(IRTriggerEntity, ClimateEntity):
             return
         previous = self._preset_mode
         self._preset_mode = preset_mode
+        if self._hvac_mode == HVACMode.OFF and preset_mode in self._preset_start_modes:
+            start_mode = self._preset_start_modes[preset_mode]
+            self._hvac_mode = HVACMode(start_mode)
+            self._protocol_mode = start_mode
+            self._target_temperature = float(
+                self._default_temperatures.get(start_mode, self._target_temperature)
+            )
+            self._apply_temperature_limits(self._protocol_mode)
         old_eco = previous in ("eco", "eco_save")
         new_eco = preset_mode in ("eco", "eco_save")
         action = "set_eco" if old_eco != new_eco else "set_save"

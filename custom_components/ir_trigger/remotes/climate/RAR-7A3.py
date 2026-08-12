@@ -43,6 +43,11 @@ climate_button_states = {
         "temperature": 25.0,
     },
 }
+preset_start_modes = {
+    "eco": "auto",
+    "eco_save": "auto",
+}
+clear_eco_on_hvac_mode = True
 
 _MODE_ENCODE = {
     "cool": 0x03,
