@@ -68,6 +68,7 @@ devices:
     name: "ベッドルームのエアコン"
     transmitter: tx_study
     receiver: rx_study_webhook # 同型機が複数ある場合の誤同期を防止
+    sync_physical_controller: true
     template: "climate/RAR-7A3"
 
 # 4. グローバル設定
@@ -121,7 +122,7 @@ python3 tools/scripts/broadlink_json_to_yaml.py input.json output.yaml --domain 
 
 `template: "climate/RAR-7A3"` は、冷房・暖房・除湿・これっきり自動、6段階の風量、eco／セーブの組み合わせをClimateエンティティから送信します。上下・左右スイング、フィルター掃除、標準Climateに対応するモードがない「涼快」は同じデバイス配下のボタンになります。
 
-RAR-7A3の受信フレームからClimate状態も同期します。複数室に同型機がある場合は、各デバイスへ `receiver`（文字列またはリスト）を指定し、別室の信号による誤同期を防いでください。スイングはリモコン自体がトグル信号しか送らないため、現在状態は追跡できません。
+`sync_physical_controller: true` を指定すると、RAR-7A3の受信フレームからClimate状態も同期します。この機能では `receiver`（文字列またはリスト）が必須で、別室の信号による誤同期を防ぎます。同じ仕組みはLightにも対応します。スイングはリモコン自体がトグル信号しか送らないため、現在状態は追跡できません。
 
 ---
 

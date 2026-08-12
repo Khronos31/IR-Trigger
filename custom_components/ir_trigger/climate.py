@@ -7,7 +7,7 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.const import PRECISION_WHOLE, UnitOfTemperature
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
@@ -16,12 +16,14 @@ from .const import (
     CONF_MAPPING,
     CONF_NAME,
     CONF_RECEIVER,
+    CONF_SYNC_PHYSICAL_CONTROLLER,
     CONF_TRANSMITTER,
     DOMAIN,
     SIGNAL_IR_CODE_RECEIVED,
     SIGNAL_LOAD_COMPLETE,
 )
 from .entity import IRTriggerEntity
+from .physical_sync import validate_receiver_scope
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,6 +86,9 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                     clear_eco_on_hvac_mode=device_info.get(
                         "clear_eco_on_hvac_mode", False
                     ),
+                    sync_physical_controller=device_info.get(
+                        CONF_SYNC_PHYSICAL_CONTROLLER, False
+                    ),
                     receivers=device_info.get(CONF_RECEIVER),
                 )
             )
@@ -144,6 +149,7 @@ class IRTriggerClimate(IRTriggerEntity, ClimateEntity):
         climate_button_states,
         preset_start_modes,
         clear_eco_on_hvac_mode,
+        sync_physical_controller,
         receivers,
     ):
         super().__init__(hass, device_id, device_name, transmitter, transmitter_id, buttons, mapping)
@@ -157,9 +163,10 @@ class IRTriggerClimate(IRTriggerEntity, ClimateEntity):
         self._climate_button_states = climate_button_states
         self._preset_start_modes = preset_start_modes
         self._clear_eco_on_hvac_mode = clear_eco_on_hvac_mode
-        if isinstance(receivers, str):
-            receivers = [receivers]
-        self._receivers = frozenset(receivers or [])
+        self._sync_physical_controller = sync_physical_controller
+        self._receivers = validate_receiver_scope(
+            sync_physical_controller, receivers, device_id
+        )
         self._temperature_ranges = temperature_ranges
         self._default_temperatures = default_temperatures
 
@@ -191,13 +198,14 @@ class IRTriggerClimate(IRTriggerEntity, ClimateEntity):
         await super().async_added_to_hass()
         ir_data = self.hass.data[DOMAIN]
         ir_data.climate_entities[self._device_id] = self
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                SIGNAL_IR_CODE_RECEIVED,
-                self._async_receive_ir_code,
+        if self._sync_physical_controller:
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self.hass,
+                    SIGNAL_IR_CODE_RECEIVED,
+                    self._async_receive_ir_code,
+                )
             )
-        )
 
     async def async_will_remove_from_hass(self) -> None:
         """Remove the dynamic-button registry entry."""
@@ -369,9 +377,14 @@ class IRTriggerClimate(IRTriggerEntity, ClimateEntity):
                 )
                 return
 
+    @callback
     def _async_receive_ir_code(self, receiver: str, code: str) -> None:
         """Apply a decoded physical-remote frame without transmitting IR."""
-        if not self._decoder or (self._receivers and receiver not in self._receivers):
+        if (
+            not self._sync_physical_controller
+            or not self._decoder
+            or receiver not in self._receivers
+        ):
             return
         try:
             state = self._decoder(code)

@@ -8,6 +8,8 @@ DICT_FILE_NAME = "IR-Trigger.yaml"
 
 CONF_RECEIVER = "receiver"
 CONF_CODE = "code"
+CONF_SYNC_PHYSICAL_CONTROLLER = "sync_physical_controller"
+CONF_STATE_SYNC = "state_sync"
 
 CONF_MODE_ENTITY = "mode_entity"
 CONF_TRANSMITTERS = "transmitters"

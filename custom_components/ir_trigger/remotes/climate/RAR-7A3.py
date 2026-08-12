@@ -221,7 +221,15 @@ def encode(
 
 
 def decode(code: str) -> dict | None:
-    """Decode a validated RAR-7A3 AEHA frame into climate state."""
+    """Decode a validated RAR-7A3 AEHA state block into climate state.
+
+    Physical RAR-7A3 remotes transmit the state in a multi-block frame. Some
+    receivers expose only the first 284-bit block (with a ``-284`` suffix),
+    while IR-Trigger's encoder emits the complete 456-bit representation.
+    Every field needed by Home Assistant is present by byte 29, so accept a
+    complete first block while still validating every received value/
+    complement pair.
+    """
     if not isinstance(code, str) or not code.startswith("AEHA-"):
         return None
     hex_payload = code[5:].split("-", 1)[0]
@@ -229,9 +237,15 @@ def decode(code: str) -> dict | None:
         data = bytes.fromhex(hex_payload)
     except ValueError:
         return None
-    if len(data) != 57 or data[:3] != b"\x01\x10\x00":
+    if len(data) < 30 or data[:3] != b"\x01\x10\x00":
         return None
-    if any(data[offset + 1] != (data[offset] ^ 0xFF) for offset in range(3, 56, 2)):
+    # A non-byte-aligned receiver block may end with the value half of a pair.
+    # Validate all pairs that are actually present; fields consumed below are
+    # covered because they precede byte 30.
+    if any(
+        data[offset + 1] != (data[offset] ^ 0xFF)
+        for offset in range(3, len(data) - 1, 2)
+    ):
         return None
 
     protocol_mode = _MODE_DECODE.get(data[25] & 0x0F)

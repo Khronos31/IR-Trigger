@@ -36,6 +36,22 @@ Spawn your home appliances as native Home Assistant entities.
 - `transmitter`: The ID in your `transmitters` block that will blast this device's codes.
 - `template`: The path to the remote's dictionary file.
   - **CRITICAL**: Use the full category directory path (e.g., `media_player/J-MX100RC`). Exclude the `.yaml` extension.
+- `sync_physical_controller`: When `true`, received physical-remote frames update the entity state. Defaults to `false`.
+- `receiver`: Receiver ID or list allowed to synchronize this device. Required when `sync_physical_controller` is enabled.
+
+```yaml
+devices:
+  Light_Bedroom:
+    name: "Bedroom Light"
+    transmitter: tx_bedroom
+    receiver: rx_bedroom
+    sync_physical_controller: true
+    template: "light/XM101"
+```
+
+Light dictionaries derive dedicated on/off semantics from `mapping.turn_on` and `mapping.turn_off`. Dictionaries can add deterministic `state_sync` actions (`on`, `off`, `toggle`, or `ignore`) for presets and ambiguous power buttons. Climate dictionaries decode full-state frames with `decode()`.
+
+Transmitter `local_receivers` also suppresses state updates caused by receivers hearing HA's own transmission. A physical press of the same code within one second of an HA transmission is indistinguishable and is treated as an echo.
 
 ### Dictionary File Formats
 Map button names to IR codes in your template files. We natively support the following formats:

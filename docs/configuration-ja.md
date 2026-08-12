@@ -35,6 +35,22 @@ HA から赤外線を発信するデバイスを指定します。
 - `transmitter`: 送信に使用する `transmitters` 内の ID。
 - `template`: 使用するリモコン辞書ファイルのパス。
   - **重要**: `media_player/J-MX100RC` のように、カテゴリディレクトリ名を含めて指定してください（拡張子 `.yaml` は不要）。
+- `sync_physical_controller`: `true` の場合、物理リモコンの受信信号をエンティティ状態へ反映します。既定値は `false` です。
+- `receiver`: 状態同期を受け付ける受信機ID（文字列またはリスト）。`sync_physical_controller: true` では必須です。
+
+```yaml
+devices:
+  Light_Bedroom:
+    name: "ベッドルームのライト"
+    transmitter: tx_bedroom
+    receiver: rx_bedroom
+    sync_physical_controller: true
+    template: "light/XM101"
+```
+
+Light辞書は標準の `mapping.turn_on` / `mapping.turn_off` から状態を自動推定します。トグルやプリセットなど追加の意味が必要な場合、辞書側の `state_sync` に `on` / `off` / `toggle` / `ignore` を指定します。Climate辞書は `decode()` で全状態フレームを解釈します。
+
+送信機の `local_receivers` は、HA自身が送信した赤外線を近接受信機が拾った場合の状態再反映も抑止します。物理リモコンと同じコードをHA送信後1秒以内に押した場合は区別できないため、その入力もエコーとして扱われます。
 
 ### 辞書ファイルの記述フォーマット
 辞書ファイル内では、ボタン名と対応する赤外線コードを定義します。以下の2種類のフォーマットに対応しています。

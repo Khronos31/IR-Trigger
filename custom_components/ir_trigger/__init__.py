@@ -22,6 +22,7 @@ from .const import (
     CONF_DEVICES,
     CONF_GLOBAL,
     CONF_LOCAL_RECEIVERS,
+    CONF_MAPPING,
     CONF_MODE_ENTITY,
     CONF_MODES,
     CONF_NAME,
@@ -31,6 +32,8 @@ from .const import (
     CONF_SERVICE,
     CONF_SOURCE,
     CONF_STATE_MACHINES,
+    CONF_STATE_SYNC,
+    CONF_SYNC_PHYSICAL_CONTROLLER,
     CONF_TARGET,
     CONF_TEMPLATE,
     CONF_TRANSMITTER,
@@ -43,6 +46,13 @@ from .const import (
     SIGNAL_IR_CODE_RECEIVED,
     SIGNAL_LOAD_COMPLETE,
     SIGNAL_UPDATE_SENSOR,
+)
+from .physical_sync import (
+    SYNC_ACCEPTED,
+    PhysicalSyncGuard,
+    PhysicalSyncTrackingTransmitter,
+    build_light_sync_actions,
+    validate_receiver_scope,
 )
 from .receiver import create_receiver
 from .transmitter import create_transmitter
@@ -69,6 +79,7 @@ class IRTriggerData:
         self.receivers = {}
         self.devices = {}
         self.climate_entities = {}
+        self.physical_sync_guard = PhysicalSyncGuard()
         self.global_repeat = []
         self.global_remap = {}
         self.state_machines = []
@@ -115,7 +126,12 @@ class IRTriggerData:
         self.transmitters = {}
         for tx_id, tx_info in config.items():
             _LOGGER.info("Creating transmitter: %s (type: %s)", tx_id, tx_info.get(CONF_TYPE))
-            self.transmitters[tx_id] = create_transmitter(self.hass, tx_info)
+            transmitter = create_transmitter(self.hass, tx_info)
+            self.transmitters[tx_id] = PhysicalSyncTrackingTransmitter(
+                transmitter,
+                self.physical_sync_guard,
+                tx_info.get(CONF_LOCAL_RECEIVERS, []),
+            )
 
     async def _setup_receivers(self, config):
         self.receivers = {}
@@ -164,6 +180,40 @@ class IRTriggerData:
                     _LOGGER.warning("Template %s not found in user or official remotes", template_name)
 
             deep_merge(final_device_info, device_info)
+            sync_enabled = final_device_info.get(CONF_SYNC_PHYSICAL_CONTROLLER, False)
+            if not isinstance(sync_enabled, bool):
+                raise TypeError(
+                    f"{device_id}: {CONF_SYNC_PHYSICAL_CONTROLLER} must be true or false"
+                )
+            sync_receivers = validate_receiver_scope(
+                sync_enabled,
+                final_device_info.get("receiver"),
+                device_id,
+            )
+            unknown_receivers = sync_receivers - self.receivers_config.keys()
+            if sync_enabled and unknown_receivers:
+                raise ValueError(
+                    f"{device_id}: unknown physical sync receiver(s): "
+                    f"{', '.join(sorted(unknown_receivers))}"
+                )
+            if (
+                sync_enabled
+                and final_device_info.get("domain") == "climate"
+                and "_decode" not in final_device_info
+            ):
+                raise ValueError(
+                    f"{device_id}: climate physical sync requires a template decode()"
+                )
+            if sync_enabled and final_device_info.get("domain") == "light":
+                actions = build_light_sync_actions(
+                    final_device_info.get(CONF_BUTTONS, {}),
+                    final_device_info.get(CONF_MAPPING, {}),
+                    final_device_info.get(CONF_STATE_SYNC, {}),
+                )
+                if not actions:
+                    raise ValueError(
+                        f"{device_id}: light physical sync has no state actions"
+                    )
             processed_devices[device_id] = final_device_info
         return processed_devices
 
@@ -335,11 +385,20 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         async_dispatcher_send(hass, SIGNAL_UPDATE_SENSOR, receiver, {
             ATTR_CODE: code, ATTR_DEVICE: info[ATTR_DEVICE], ATTR_BUTTON: info[ATTR_BUTTON]
         })
-        # Dynamic protocols (notably full-state climate remotes) cannot be
-        # represented by a finite reverse dictionary. Give interested
-        # entities the normalized code so their template decoder can update
-        # HA state without retransmitting IR.
-        async_dispatcher_send(hass, SIGNAL_IR_CODE_RECEIVED, receiver, code)
+        # Keep event/sensor/routing behavior intact, but do not let a local
+        # transmitter echo or receiver retry mutate an entity's reported state.
+        sync_classification = ir_data.physical_sync_guard.classify_received(
+            receiver, code
+        )
+        if sync_classification == SYNC_ACCEPTED:
+            async_dispatcher_send(hass, SIGNAL_IR_CODE_RECEIVED, receiver, code)
+        else:
+            _LOGGER.debug(
+                "Physical-controller state sync ignored %s frame: receiver=%s code=%s",
+                sync_classification,
+                receiver,
+                code,
+            )
 
         # 1. Global Repeat
         if device_id and device_id in ir_data.global_repeat:

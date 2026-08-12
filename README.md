@@ -72,6 +72,7 @@ devices:
     name: "Bedroom Air Conditioner"
     transmitter: tx_study
     receiver: rx_study_webhook # Prevents cross-room sync with identical units
+    sync_physical_controller: true
     template: "climate/RAR-7A3"
 
 # 4. Global Configuration
@@ -125,7 +126,7 @@ No known limitations at this time. Enjoy the Local Push freedom!
 
 `template: "climate/RAR-7A3"` controls cooling, heating, dry and Korekkiri Auto modes, six fan settings, and every eco/save combination. Vertical swing, horizontal swing, filter cleaning, and Ryokai (which has no exact standard HA climate mode) are exposed as companion buttons on the same device.
 
-Received RAR-7A3 frames synchronize the Climate entity. If identical units exist in multiple rooms, set `receiver` (a string or list) per device to prevent a remote in one room from updating another. The physical remote sends swing toggles without state, so swing state cannot be tracked reliably.
+With `sync_physical_controller: true`, received RAR-7A3 frames synchronize the Climate entity. This feature requires `receiver` (a string or list) to prevent cross-room updates and is also supported by Light entities. The physical remote sends swing toggles without state, so swing state cannot be tracked reliably.
 
 ---
 

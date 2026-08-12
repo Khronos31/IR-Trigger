@@ -1,23 +1,34 @@
 import logging
-import voluptuous as vol
-from homeassistant.components.light import LightEntity, ColorMode
-from homeassistant.core import HomeAssistant
+from typing import ClassVar
+
 import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
+from homeassistant.components.light import ColorMode, LightEntity
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
-    DOMAIN,
-    SIGNAL_LOAD_COMPLETE,
-    CONF_NAME,
-    CONF_TRANSMITTER,
+    ATTR_IS_ON,
     CONF_BUTTONS,
     CONF_DOMAIN,
     CONF_MAPPING,
+    CONF_NAME,
+    CONF_RECEIVER,
+    CONF_STATE_SYNC,
+    CONF_SYNC_PHYSICAL_CONTROLLER,
+    CONF_TRANSMITTER,
+    DOMAIN,
     SERVICE_SET_STATE,
-    ATTR_IS_ON,
+    SIGNAL_IR_CODE_RECEIVED,
+    SIGNAL_LOAD_COMPLETE,
 )
 from .entity import IRTriggerEntity
+from .physical_sync import (
+    apply_light_sync_action,
+    build_light_sync_actions,
+    validate_receiver_scope,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,12 +66,17 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities):
                     device_id,
                     device_info.get(CONF_NAME, device_id),
                     tx,
-                        tx_id,
-                        device_info.get(CONF_BUTTONS, {}),
-                        device_info.get(CONF_MAPPING, {})
-                    )
+                    tx_id,
+                    device_info.get(CONF_BUTTONS, {}),
+                    device_info.get(CONF_MAPPING, {}),
+                    sync_physical_controller=device_info.get(
+                        CONF_SYNC_PHYSICAL_CONTROLLER, False
+                    ),
+                    receivers=device_info.get(CONF_RECEIVER),
+                    state_sync=device_info.get(CONF_STATE_SYNC, {}),
                 )
-        
+            )
+
         async_add_entities(entities)
 
     if ir_data.loaded:
@@ -91,13 +107,55 @@ class IRTriggerLight(IRTriggerEntity, LightEntity):
     """Representation of an IR Trigger Light."""
 
     _attr_color_mode = ColorMode.ONOFF
-    _attr_supported_color_modes = {ColorMode.ONOFF}
+    _attr_supported_color_modes: ClassVar[set[ColorMode]] = {ColorMode.ONOFF}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        hass,
+        device_id,
+        device_name,
+        transmitter,
+        transmitter_id,
+        buttons,
+        mapping,
+        *,
+        sync_physical_controller,
+        receivers,
+        state_sync,
+    ):
         """Initialize the light."""
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            hass,
+            device_id,
+            device_name,
+            transmitter,
+            transmitter_id,
+            buttons,
+            mapping,
+        )
         self._is_on = False
         self._attr_unique_id = f"ir_trigger_light_{self._device_id}"
+        self._sync_physical_controller = sync_physical_controller
+        self._sync_receivers = validate_receiver_scope(
+            sync_physical_controller, receivers, device_id
+        )
+        self._physical_sync_actions = (
+            build_light_sync_actions(buttons, mapping, state_sync)
+            if sync_physical_controller
+            else {}
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to accepted physical-controller frames when opted in."""
+        await super().async_added_to_hass()
+        if self._sync_physical_controller:
+            self.async_on_remove(
+                async_dispatcher_connect(
+                    self.hass,
+                    SIGNAL_IR_CODE_RECEIVED,
+                    self._async_receive_ir_code,
+                )
+            )
 
     @property
     def is_on(self) -> bool:
@@ -123,4 +181,24 @@ class IRTriggerLight(IRTriggerEntity, LightEntity):
         (e.g. the physical remote was used) without re-sending IR.
         """
         self._is_on = is_on
+        self.async_write_ha_state()
+
+    @callback
+    def _async_receive_ir_code(self, receiver: str, code: str) -> None:
+        """Apply deterministic light state semantics without transmitting IR."""
+        if receiver not in self._sync_receivers:
+            return
+        action = self._physical_sync_actions.get(code)
+        if action is None:
+            return
+        state = apply_light_sync_action(self._is_on, action)
+        if state is None:
+            return
+        self._is_on = state
+        _LOGGER.info(
+            "Synchronized light %s from receiver %s using %s",
+            self._device_id,
+            receiver,
+            action,
+        )
         self.async_write_ha_state()

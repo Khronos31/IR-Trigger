@@ -136,6 +136,26 @@ class RAR7A3ProtocolTest(unittest.TestCase):
                 self.assertEqual(decoded["temperature"], float(state[2]))
                 self.assertEqual(decoded["preset_mode"], state[3])
 
+    def test_decode_accepts_physical_receiver_284_bit_state_block(self):
+        # ESPHome exposes the first RAR-7A3 state block separately from the
+        # trailing blocks. All HA state fields are present in this prefix.
+        code = "AEHA-" + COOL_25_AUTO_ON[:72] + "-284"
+        decoded = RAR.decode(code)
+        self.assertEqual(
+            decoded,
+            {
+                "hvac_mode": "cool",
+                "fan_mode": "auto",
+                "temperature": 25.0,
+                "preset_mode": "normal",
+                "protocol_mode": "cool",
+                "operation": 0x13,
+            },
+        )
+
+    def test_decode_rejects_incomplete_state_block(self):
+        self.assertIsNone(RAR.decode("AEHA-" + COOL_25_AUTO_ON[:58] + "-228"))
+
     def test_off_frame_retains_protocol_mode(self):
         decoded = RAR.decode(
             RAR.encode("off", "3", 22, "normal", "turn_off", protocol_mode="heat")

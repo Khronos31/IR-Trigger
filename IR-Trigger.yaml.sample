@@ -10,6 +10,7 @@ transmitters:
     name: "Living Room Transmitter"
     type: nature_remo
     ip: "192.168.1.30"
+    local_receivers: ["rx_living_nature"]
   tx_webhook:
     name: "Webhook Transmitter"
     type: webhook
@@ -43,12 +44,15 @@ devices:
   Light_Living:
     name: "Living Light"
     transmitter: "tx_living"
+    receiver: "rx_living_nature"
+    sync_physical_controller: true
     template: "light/IR-A04HS"
 
   Climate_Bedroom:
     name: "Bedroom Air Conditioner"
     transmitter: "tx_study"
     receiver: "rx_study_webhook"
+    sync_physical_controller: true
     template: "climate/RAR-7A3"
 
 global:
