@@ -59,7 +59,7 @@ jobs:
       - name: Build HACS artifact
         run: |
           cd custom_components/ir_trigger
-          zip -9 -r ../../../ir_trigger.zip . -x '__pycache__/*' '*.pyc'
+          zip -9 -r "$GITHUB_WORKSPACE/ir_trigger.zip" . -x '__pycache__/*' '*.pyc'
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
